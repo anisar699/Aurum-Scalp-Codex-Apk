@@ -1,6 +1,7 @@
 package com.aurum.scalp;
 
 import java.util.*;
+import java.time.*;
 
 public final class Market {
     private Market() {}
@@ -51,7 +52,7 @@ public final class Market {
         if(quote==null)return "CONNECTING";
         if(quote.marketClosed)return connectedThisSession?"● MARKET CLOSED":"● CLOSED / SAVED";
         if(!connectedThisSession)return "● SAVED";
-        if(now<=0||quote.time>now+1000)return "● TIME UNVERIFIED";
+        if(now<=0||quote.time>now+MarketClock.FUTURE_TOLERANCE)return "● TIME UNVERIFIED";
         long age=Math.max(0,now-quote.time);
         if(quote.providerStale)return "● STALE";
         return age<=30_000?"● LIVE":age<=90_000?"● DELAYED":"● STALE";
@@ -84,17 +85,31 @@ public final class Market {
             high=h;low=l;firstTime=first;lastClose=last;
         }
     }
+    private static final ZoneId NEW_YORK=ZoneId.of("America/New_York");
+
+    static long tradingDay(long epoch){
+        ZonedDateTime ny=Instant.ofEpochMilli(epoch).atZone(NEW_YORK);
+        return (ny.getHour()>=17?ny.toLocalDate().plusDays(1):ny.toLocalDate()).toEpochDay();
+    }
+
     public static PriorSession priorSession(Map<Frame,List<Candle>> data,long now){
-        long today=now/86_400_000L,latest=-1;
-        Frame[] sources={Frame.M5,Frame.M15,Frame.H1};
-        for(Frame f:sources)for(Candle c:closed(data.getOrDefault(f,Collections.emptyList()),f.duration(),now)){
-            long day=c.time/86_400_000L;if(c.valid()&&day<today&&closeTime(c,f.duration())<=now)latest=Math.max(latest,day);
-        }
-        if(latest<0)return null;
+        if(now<=0)return null;
+        long today=tradingDay(now);
         PriorSession best=null;
-        for(Frame f:sources){
-            List<Candle> day=new ArrayList<>();for(Candle c:closed(data.getOrDefault(f,Collections.emptyList()),f.duration(),now))if(c.time/86_400_000L==latest)day.add(c);
-            if(!day.isEmpty()&&(best==null||day.size()*f.minutes>best.bars*best.frame.minutes))best=new PriorSession(latest,f,day);
+        for(Frame frame:new Frame[]{Frame.M5,Frame.M15,Frame.H1}){
+            Map<Long,List<Candle>> sessions=new HashMap<>();
+            for(Candle candle:closed(data.getOrDefault(frame,Collections.emptyList()),frame.duration(),now)){
+                long day=tradingDay(candle.time);
+                if(day<today)sessions.computeIfAbsent(day,key->new ArrayList<>()).add(candle);
+            }
+            for(var session:sessions.entrySet()){
+                long day=session.getKey();
+                List<Candle> bars=session.getValue();
+                if(bars.size()*frame.minutes<240)continue;
+                if(best==null||day>best.day||day==best.day&&bars.size()*frame.minutes>best.bars*best.frame.minutes){
+                    best=new PriorSession(day,frame,bars);
+                }
+            }
         }
         return best;
     }

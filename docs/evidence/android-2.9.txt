@@ -1,0 +1,12 @@
+Build: BUILD SUCCESSFUL.
+JVM: 138 tests, 0 failures, 0 errors, 0 skipped.
+Lint: no issues in debug or release.
+Node: 11 tests passed. Browser: 25 checks passed.
+Deterministic zone replay: completed on all five archived timeframes.
+Signing: APK Signature Scheme v2 and v3. Existing signing certificate retained.
+Install: signed APK upgraded v2.8.0 on Android 11. Installed SHA-256 matched signed release.
+
+PASS: 12 Android biquote/feed checks; 12 repository/chart audit checks; 19 monitoring/notification/UI checks; 18 advanced chart checks; 14 deep-debug regression checks; 9 real-provider checks
+
+PASS real Android biquote TLS REST + SignalR; source=biquote · XAUUSD · MID analysis; quote=● LIVE; MID=3739.6099999999997; stream=Subscribed to XAUUSD; startupAllFramesAndStreamMs=5914; initialQuoteAgeMs=1179; 1m=300 closed / 18 zones / 0 gaps; 5m=288 closed / 20 zones / 1 gaps; 15m=192 closed / 10 zones / 2 gaps; 1H=168 closed / 10 zones / 0 gaps; 4H=180 closed / 12 zones / 0 gaps
+Sample seconds=120; startedOpen=true; streamMessages=244; additionalSubscriptions=0; maxObservedMessageGapMs=2005; HTTP attempts=2; tailFrames=1

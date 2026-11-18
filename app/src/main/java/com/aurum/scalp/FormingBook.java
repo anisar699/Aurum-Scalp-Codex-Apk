@@ -15,7 +15,7 @@ final class FormingBook {
     }
     private final Map<Market.Frame,TreeMap<Long,State>> frames=new EnumMap<>(Market.Frame.class);
     synchronized void tick(Market.Quote q,boolean online,long now){
-        if(!online||q==null||!q.valid()||q.marketClosed||q.providerStale||now<=0||q.time>now+1000||now-q.time>30_000)return;
+        if(!online||q==null||!q.valid()||q.marketClosed||q.providerStale||now<=0||q.time>now+MarketClock.FUTURE_TOLERANCE||now-q.time>30_000)return;
         for(Market.Frame f:Market.Frame.values()){
             TreeMap<Long,State> map=frames.computeIfAbsent(f,k->new TreeMap<>());long bucket=q.time/f.duration()*f.duration();
             if(!map.isEmpty()&&bucket<map.lastKey())continue;

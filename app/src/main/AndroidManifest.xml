@@ -6,6 +6,7 @@
     <application android:label="Aurum Scalp" android:theme="@style/AppTheme" android:icon="@drawable/ic_launcher"
         android:allowBackup="false" android:fullBackupContent="@xml/full_backup_rules" android:dataExtractionRules="@xml/backup_rules" android:enableOnBackInvokedCallback="true" tools:targetApi="33" android:supportsRtl="true" android:usesCleartextTraffic="false">
         <service android:name=".MonitoringService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <service android:name=".MonitoringWatch" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
         <activity android:name=".ChartActivity" android:exported="false" android:configChanges="orientation|screenSize" />
         <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>

@@ -1,3 +1,23 @@
+# Aurum Scalp 2.9.0 audit follow-up
+
+| Audit items | Resolution |
+| --- | --- |
+| H-1, H-3 | Fetch currently needed histories around UTC closes, retry pending closes with a bounded schedule, and merge five-bar tails into cached history. Bootstrap and hourly correction requests use full windows. The shade still needs 5m, 15m, 1H and 4H in background mode. Manual Refresh asks for the visible timeframe and quote with per-resource spacing. A delayed 1H/4H confirmation stays eligible for five minutes and displays its age. |
+| H-2 | Biquote publishes a shared per-IP REST limit and an unmetered SignalR stream. REST 429 preserves the shared REST cooldown. The established stream stays available and its reconnect failures have their own cooldown. REST 401/403 uses endpoint-specific exponential retry. Active holds persist and Health shows their status and retry time. |
+| M-1, M-2, M-8 | Add SignalR pings and hub-idle detection. Estimate server time from TLS response Date and request latency and slew corrections on elapsed time. Brief interruptions preserve closed-candle watermarks. Persist processed closes to recognize a recent confirmation once after a restart. |
+| M-3, M-4 | Group up to ten recent event notifications, with each event independently visible. Coalesce repository UI callbacks, evaluate alerts on one worker, cache notification permission checks and slow the shade updates. |
+| M-5 | Detect service stops through lifecycle callbacks and a best-effort periodic job. Report the reason in Health and post a stopped notification when Android permits it. Long background monitoring remains subject to OEM and Android restrictions. |
+| M-6, M-7 | Resolve pins to the best nearby same-frame band and carry their context through a confirmed flip. Report three closed snapshots without a replacement. Calculate the prior trading day at 17:00 New York time and require four hours of observed coverage. |
+| L-1, L-2, L-4, L-5, L-6, L-8 | Use the same versioned User-Agent for both transports, two-decimal native chart labels, and outward-rounded notification bands. Detach the WebView before destruction. Follow one same-origin HTTPS redirect. Use 40 bars for zones and keep the higher minimum for trend metrics. Across time gaps, use the first bar's range for ATR. |
+| L-7 | Simplify Retry-After parsing and remove the former unused instance state. Biquote's adapter requires the UTC grid; the generic candle model still accepts explicitly represented hour-aligned H4 broker fragments. The separate rules have coverage in the codec and model tests. |
+| L-9 | Rework the touched transport and scheduling code and add CI for Android and chart tests. Keep release signing outside the repository and document key backup and update requirements. |
+
+UTC display and English strings remain in this release. Translation, extended walk-forward measurements, broker offsets and server-side monitoring were deferred. The historical replay is a small developer-side sample.
+
+See the run results and device limits in [VERIFICATION.md](VERIFICATION.md).
+
+---
+
 # Aurum 2.6: thorough debug audit
 
 Scope: repository/stream lifecycle, rate limits, provider JSON/clock/cache, forming preview, zone engine and indicator calculations, native UI, chart data transforms, rendering, accessibility and background alerts. This audit compares the delivered 2.5 source with the 2.6 fixes. Controlled fixtures are in test sources only; production uses actual biquote data.

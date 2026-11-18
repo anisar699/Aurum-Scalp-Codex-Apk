@@ -2,7 +2,8 @@ package com.aurum.scalp;
 import android.app.Instrumentation;import android.os.Bundle;import org.json.*;import java.util.*;
 public class FeedChecks extends Instrumentation {
  private boolean live;
- @Override public void onCreate(Bundle args){super.onCreate(args);live=args!=null&&"true".equals(args.getString("live"));start();}
+ private int soakSeconds;
+ @Override public void onCreate(Bundle args){super.onCreate(args);live=args!=null&&"true".equals(args.getString("live"));soakSeconds=args==null?0:Integer.parseInt(args.getString("soakSeconds","0"));start();}
  private void check(boolean ok,String text){if(!ok)throw new AssertionError(text);}
  private boolean rejected(String body,long now){try{BiquoteCodec.quote(body,now);return false;}catch(Exception expected){return true;}}
  @Override public void onStart(){Bundle result=new Bundle();int count=0;try{
@@ -18,6 +19,6 @@ public class FeedChecks extends Instrumentation {
    JSONArray bars=new JSONArray();for(int i=99;i>=0;i--)bars.put(new JSONObject().put("openTime",java.time.Instant.ofEpochMilli(t+i*f.duration()).toString()).put("open",4000).put("high",4002).put("low",3998).put("close",4001).put("isOpen",i==99));
    String body=new JSONObject().put("symbol","XAUUSD").put("interval",BiquoteCodec.interval(f)).put("bars",bars).toString();List<Market.Candle>b=BiquoteCodec.candles(body,f,t+200*f.duration(),80);check(b.size()==99&&b.get(0).time==t,"Sorted closed flags "+f.label);count++;
   }
-  result.putString("stream","PASS: "+count+" Android biquote/feed checks; "+AuditChecks.run(this)+" repository/chart audit checks; "+MonitorChecks.run(this)+" monitoring/notification/UI checks"+"; "+ChartChecks.run(this)+" advanced chart checks; "+DebugChecks.run(this)+" deep-debug regression checks"+(live?"; "+LiveFeedChecks.run(this)+" real-provider checks":"")+"\n");finish(-1,result);
+  result.putString("stream","PASS: "+count+" Android biquote/feed checks; "+AuditChecks.run(this)+" repository/chart audit checks; "+MonitorChecks.run(this)+" monitoring/notification/UI checks"+"; "+ChartChecks.run(this)+" advanced chart checks; "+DebugChecks.run(this)+" deep-debug regression checks"+(live?"; "+LiveFeedChecks.run(this,soakSeconds)+" real-provider checks":"")+"\n");finish(-1,result);
  }catch(Throwable e){result.putString("stream","FAIL after "+count+" checks: "+android.util.Log.getStackTraceString(e)+"\n");finish(0,result);}}
 }

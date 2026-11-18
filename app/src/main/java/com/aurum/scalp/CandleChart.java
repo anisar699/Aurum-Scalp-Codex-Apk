@@ -46,15 +46,14 @@ public final class CandleChart extends View {
     private void text(Canvas c,String s,float x,float y,int size,int color){p.setColor(color);p.setTextSize(dp(size));p.setTypeface(SANS);c.drawText(s,x,y,p);}
     @Override protected void onDraw(Canvas c){
         super.onDraw(c);if(analysis==null||analysis.candles.isEmpty()){text(c,"Waiting for market history",dp(12),getHeight()/2f,13,MainActivity.MUTED);return;}
-        p.setTextSize(dp(10));p.setTypeface(SANS);String bidLabel=String.format(Locale.US,"%,.2f",price);
+        p.setTextSize(dp(10));p.setTypeface(SANS);String bidLabel=PriceFormat.display(price);
         left=dp(4);right=getWidth()-Math.max(dp(70),p.measureText(bidLabel)+dp(12));top=dp(30);bottom=getHeight()-dp(27);if(right<=left)return;
         last=analysis.candles.size()-Math.min(offset,Math.max(0,analysis.candles.size()-1));first=Math.max(0,last-visible);low=Double.MAX_VALUE;high=0;
         for(int i=first;i<last;i++){Market.Candle b=analysis.candles.get(i);low=Math.min(low,b.low);high=Math.max(high,b.high);}
         if(offset==0&&price>0){low=Math.min(low,price);high=Math.max(high,price);}
         double pad=Math.max(analysis.atr*.35,(high-low)*.04);low-=pad;high+=pad;if(high<=low)high=low+1;
         float priceY=price>=low&&price<=high?y(price):-9999;
-        String format=analysis.frame.scalp()?"%,.2f":"%,.1f";
-        for(int i=0;i<5;i++){double v=low+(high-low)*i/4;float yy=y(v);p.setColor(MainActivity.BORDER);p.setStrokeWidth(dp(.5f));c.drawLine(left,yy,right,yy,p);if(Math.abs(yy-priceY)>dp(14))text(c,String.format(Locale.US,format,v),right+dp(7),yy+dp(4),10,MainActivity.MUTED);}
+        for(int i=0;i<5;i++){double v=low+(high-low)*i/4;float yy=y(v);p.setColor(MainActivity.BORDER);p.setStrokeWidth(dp(.5f));c.drawLine(left,yy,right,yy,p);if(Math.abs(yy-priceY)>dp(14))text(c,PriceFormat.display(v),right+dp(7),yy+dp(4),10,MainActivity.MUTED);}
         c.save();c.clipRect(left,top,right,bottom);
         for(ZoneEngine.Zone z:painted){int color=z.reference?MainActivity.GOLD:z.support?MainActivity.GREEN:MainActivity.RED;p.setColor((color&0xFFFFFF)|0x24000000);c.drawRect(left,y(z.high),right,y(z.low),p);p.setColor((color&0xFFFFFF)|0x99000000);p.setStrokeWidth(dp(1));p.setPathEffect(dash);c.drawLine(left,y(z.center),right,y(z.center),p);p.setPathEffect(null);}
         float step=(right-left)/Math.max(1,last-first);

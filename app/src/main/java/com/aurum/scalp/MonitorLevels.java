@@ -3,7 +3,6 @@ package com.aurum.scalp;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /** Notification content derived from the same quote and zone model used in the app. */
@@ -61,7 +60,7 @@ final class MonitorLevels {
 
     private static String band(String side, ZoneEngine.Zone zone) {
         if (zone == null) return side + " —";
-        String bounds = String.format(Locale.US, "%.2f–%.2f", zone.low, zone.high);
+        String bounds = ZoneSelection.band(zone);
         return side + (zone.reference ? "? " : " ") + bounds;
     }
 }

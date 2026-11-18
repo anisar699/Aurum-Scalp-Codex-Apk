@@ -32,9 +32,9 @@ final class AuditChecks {
         });
         try{
             trusted(repo);repo.start();await(()->repo.quoteOnline&&!repo.loading(),"Initial quote connection");checks++;
-            mode.set(1);Thread.sleep(1100);repo.refresh();await(()->!repo.quoteError.isEmpty()&&!repo.loading(),"Transient tick failure");check(repo.quoteOnline,"Failed tick must retain current-session connection history");checks++;
-            int beforeOrdinary=requests.get();Thread.sleep(1100);repo.refresh();await(()->requests.get()>beforeOrdinary&&!repo.loading(),"Manual retry clears ordinary network backoff");checks++;
-            mode.set(2);int threshold=requests.get();Thread.sleep(1100);repo.refresh();await(()->requests.get()>threshold&&!repo.loading(),"429 received");int beforeRate=requests.get();Thread.sleep(1100);repo.refresh();Thread.sleep(300);check(requests.get()==beforeRate,"Manual refresh must preserve the exact 60-second 429 backoff");checks++;
+            mode.set(1);Thread.sleep(10_100);repo.refresh(null);await(()->!repo.quoteError.isEmpty()&&!repo.loading(),"Transient tick failure");check(repo.quoteOnline,"Failed tick must retain current-session connection history");checks++;
+            int beforeOrdinary=requests.get();Thread.sleep(10_100);repo.refresh(null);await(()->requests.get()>beforeOrdinary&&!repo.loading(),"Manual retry clears ordinary network backoff");checks++;
+            mode.set(2);int threshold=requests.get();Thread.sleep(10_100);repo.refresh(null);await(()->requests.get()>threshold&&!repo.loading(),"429 received");int beforeRate=requests.get();Thread.sleep(10_100);repo.refresh(null);Thread.sleep(300);check(requests.get()==beforeRate,"Manual refresh must preserve the exact 60-second 429 backoff");checks++;
             repo.stop();check(!repo.quoteOnline,"New foreground session must require a fresh connection");checks++;
         }finally{repo.stop();}
 

@@ -1,13 +1,8 @@
 archive M1 valid closed=300
-provider-sample M1 valid closed=300 requested=720
 archive M5 valid closed=288
-provider-sample M5 valid closed=288 requested=720
 archive M15 valid closed=192
-provider-sample M15 valid closed=192 requested=480
 archive H1 valid closed=168
-provider-sample H1 valid closed=168 requested=1000
 archive H4 valid closed=180
-provider-sample H4 valid closed=180 requested=360
 Non-overlapping six-closed-bar windows. Nearest confirmed zone on either side; first touch; 0.5 ATR close away versus two buffered closes beyond the band.
 Median delay is bars from touch to reaction, not app or provider notification latency.
 archive 1m closed=300 gaps=0
@@ -15,15 +10,6 @@ archive 1m closed=300 gaps=0
   Range / Normal windows=11 covered=11 touches=9 reactions=2 invalidated=7 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
   Transition / mixed / Normal windows=16 covered=16 touches=10 reactions=4 invalidated=3 unresolved=3 skipped-gaps=0 median-bars-after-touch=1
   Uptrend / Normal windows=1 covered=1 touches=1 reactions=0 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
-provider-sample 1m closed=300 gaps=0
-  Downtrend / High windows=4 covered=4 touches=2 reactions=0 invalidated=2 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
-  Downtrend / Normal windows=5 covered=5 touches=4 reactions=1 invalidated=2 unresolved=1 skipped-gaps=0 median-bars-after-touch=1
-  Range / Normal windows=4 covered=4 touches=4 reactions=1 invalidated=3 unresolved=0 skipped-gaps=0 median-bars-after-touch=3
-  Transition / mixed / High windows=1 covered=1 touches=1 reactions=0 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
-  Transition / mixed / Low windows=1 covered=1 touches=1 reactions=1 invalidated=0 unresolved=0 skipped-gaps=0 median-bars-after-touch=3
-  Transition / mixed / Normal windows=11 covered=11 touches=6 reactions=4 invalidated=2 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
-  Uptrend / High windows=3 covered=3 touches=3 reactions=2 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
-  Uptrend / Normal windows=7 covered=7 touches=2 reactions=1 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
 archive 5m closed=288 gaps=1
   Downtrend / Normal windows=2 covered=2 touches=2 reactions=1 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
   Range / High windows=4 covered=4 touches=4 reactions=4 invalidated=0 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
@@ -33,36 +19,18 @@ archive 5m closed=288 gaps=1
   Transition / mixed / Low windows=2 covered=2 touches=1 reactions=0 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
   Transition / mixed / Normal windows=5 covered=5 touches=3 reactions=2 invalidated=0 unresolved=1 skipped-gaps=0 median-bars-after-touch=1
   Uptrend / Normal windows=1 covered=1 touches=1 reactions=0 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
-provider-sample 5m closed=288 gaps=1
-  Downtrend / High windows=7 covered=7 touches=3 reactions=1 invalidated=0 unresolved=2 skipped-gaps=0 median-bars-after-touch=2
-  Downtrend / Normal windows=7 covered=7 touches=4 reactions=1 invalidated=3 unresolved=0 skipped-gaps=0 median-bars-after-touch=2
-  Range / Normal windows=9 covered=9 touches=7 reactions=1 invalidated=6 unresolved=0 skipped-gaps=0 median-bars-after-touch=4
-  Transition / mixed / Normal windows=9 covered=9 touches=6 reactions=3 invalidated=2 unresolved=1 skipped-gaps=1 median-bars-after-touch=1
-  Uptrend / Normal windows=1 covered=1 touches=1 reactions=1 invalidated=0 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
 archive 15m closed=192 gaps=2
   Downtrend / High windows=1 covered=1 touches=0 reactions=0 invalidated=0 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
   Downtrend / Normal windows=2 covered=2 touches=2 reactions=1 invalidated=0 unresolved=1 skipped-gaps=0 median-bars-after-touch=4
   Range / Normal windows=10 covered=10 touches=8 reactions=5 invalidated=1 unresolved=2 skipped-gaps=0 median-bars-after-touch=1
   Transition / mixed / Normal windows=2 covered=2 touches=2 reactions=0 invalidated=1 unresolved=1 skipped-gaps=1 median-bars-after-touch=n/a
   Uptrend / Normal windows=2 covered=2 touches=1 reactions=0 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
-provider-sample 15m closed=192 gaps=2
-  Downtrend / Normal windows=8 covered=8 touches=5 reactions=0 invalidated=4 unresolved=1 skipped-gaps=0 median-bars-after-touch=n/a
-  Range / Normal windows=6 covered=6 touches=4 reactions=1 invalidated=3 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
-  Transition / mixed / Normal windows=3 covered=3 touches=2 reactions=2 invalidated=0 unresolved=0 skipped-gaps=1 median-bars-after-touch=1
 archive 1H closed=168 gaps=0
   Downtrend / Low windows=1 covered=1 touches=0 reactions=0 invalidated=0 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
   Downtrend / Normal windows=7 covered=7 touches=3 reactions=0 invalidated=3 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
   Range / Normal windows=1 covered=1 touches=1 reactions=0 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
   Transition / mixed / Normal windows=5 covered=5 touches=3 reactions=0 invalidated=2 unresolved=1 skipped-gaps=0 median-bars-after-touch=n/a
-provider-sample 1H closed=168 gaps=0
-  Downtrend / Normal windows=8 covered=8 touches=6 reactions=4 invalidated=1 unresolved=1 skipped-gaps=0 median-bars-after-touch=1
-  Range / Normal windows=3 covered=3 touches=2 reactions=1 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
-  Transition / mixed / Normal windows=3 covered=3 touches=0 reactions=0 invalidated=0 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
 archive 4H closed=180 gaps=0
   Downtrend / Normal windows=7 covered=7 touches=3 reactions=1 invalidated=2 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
   Transition / mixed / Normal windows=5 covered=5 touches=3 reactions=1 invalidated=2 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
   Uptrend / Normal windows=4 covered=4 touches=1 reactions=1 invalidated=0 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
-provider-sample 4H closed=180 gaps=0
-  Downtrend / Normal windows=7 covered=7 touches=5 reactions=2 invalidated=2 unresolved=1 skipped-gaps=0 median-bars-after-touch=1
-  Transition / mixed / Normal windows=6 covered=6 touches=5 reactions=2 invalidated=3 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
-  Uptrend / Normal windows=3 covered=3 touches=1 reactions=1 invalidated=0 unresolved=0 skipped-gaps=0 median-bars-after-touch=1

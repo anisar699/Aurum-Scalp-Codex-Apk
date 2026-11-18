@@ -2,7 +2,7 @@ package com.aurum.scalp;
 
 import java.util.*;
 
-/** Session-local watermarks prevent replaying old history as new alerts. No trade or journal records. */
+/** Closed-candle watermarks keep recent confirmations eligible across brief feed gaps. */
 public final class SmartAlerts {
     public static final class Alert {
         public final String key,title,detail;
@@ -15,13 +15,25 @@ public final class SmartAlerts {
         final Map<String,Approach> zones=new HashMap<>();
     }
     private final Map<Market.Frame,State> states=new EnumMap<>(Market.Frame.class);
-    private static final long EVENT_MAX_AGE = 90_000;
-    public void reset(){states.clear();}
-    void reset(Market.Frame frame){states.remove(frame);}
+    interface Watermarks {
+        long load(Market.Frame frame);
+        void store(Market.Frame frame,long close);
+    }
+    private final Watermarks watermarks;
+    SmartAlerts(){this(null);}
+    SmartAlerts(Watermarks watermarks){this.watermarks=watermarks;}
+    public void reset(){
+        for(Market.Frame frame:Market.Frame.values())reset(frame);
+    }
+    void reset(Market.Frame frame){
+        states.remove(frame);
+        if(watermarks!=null)watermarks.store(frame,0);
+    }
+    void pause(){states.clear();}
     boolean armed(Market.Frame frame){return states.containsKey(frame);}
     static boolean usableQuote(Market.Quote quote, boolean online, long now){
         return online && quote!=null && quote.valid() && !quote.marketClosed && !quote.providerStale
-            && now>0 && quote.time<=now+1000 && now-quote.time<=30_000;
+            && now>0 && quote.time<=now+MarketClock.FUTURE_TOLERANCE && now-quote.time<=30_000;
     }
     public List<Alert> evaluate(Market.Quote quote,boolean online,long now,Map<Market.Frame,ZoneEngine.Analysis> analyses,Map<Market.Frame,Long> synced,Set<Market.Frame> selected){
         return evaluate(quote,online,now,analyses,synced,selected,Collections.emptyMap());
@@ -35,33 +47,44 @@ public final class SmartAlerts {
             ZoneEngine.Analysis a=analyses.get(f);long last=DataFreshness.lastClose(a);
             long sync=synced.getOrDefault(f,0L);
             boolean ready=tick&&(auto||pin!=null)&&a!=null&&a.atr>0&&a.historyFresh(now)&&DataFreshness.verified(now,sync,f);
-            if(!ready){states.remove(f);continue;}
-            // HTTP Date has one-second precision; a new response can correct the anchor slightly.
-            State s=states.get(f);if(s!=null&&(now-s.seen>EVENT_MAX_AGE||now+2000<s.seen)){states.remove(f);s=null;}
+            if(!ready)continue;
+            State s=states.get(f);
             // Preserve the prior close while the stream catches up to the newer history packet.
             if(quote.time<last)continue;
-            boolean first=s==null;
-            if(first){s=new State();s.close=last;states.put(f,s);}
+            ZoneEngine.Zone pinnedZone=ZoneSelection.resolve(pin,a);
+            if(s==null){
+                s=new State();
+                long prior=watermarks==null?0:watermarks.load(f);
+                s.close=prior>0?prior:last;
+                states.put(f,s);
+                if(prior==0&&watermarks!=null)watermarks.store(f,last);
+            }else if(now-s.seen>30_000){
+                // A long quote gap cannot establish a real approach. Closed events still use their watermark.
+                s.zones.clear();
+            }
             s.seen=Math.max(s.seen,now);
-            if(!first&&last>s.close){
+            if(last>s.close){
                 // Only events on newly closed candles. Each frame confirms its own break/retest.
                 Set<String> unique=new HashSet<>();
-                for(ZoneEngine.Event e:a.events)if(e.time>s.close&&e.time<=last&&now-e.time<=EVENT_MAX_AGE&&unique.add(e.key())){
-                    boolean pinned=pin!=null&&pin.matches(e.zone);
+                for(ZoneEngine.Event e:a.events)if(e.time>s.close&&e.time<=last&&now-e.time<=HistorySchedule.eventWindow(f)&&unique.add(e.key())){
+                    boolean pinned=pin!=null&&(pin.matches(e.zone)||pinnedZone!=null&&pinnedZone.id.equals(e.zone.id));
                     ZoneSelection.Trigger trigger=e.kind==ZoneEngine.EventKind.BREAK?ZoneSelection.Trigger.BREAK:ZoneSelection.Trigger.RETEST;
                     if(pinned?pin.trigger()!=trigger:!auto)continue;
                     String kind=e.kind==ZoneEngine.EventKind.BREAK?"Break confirmed":e.kind==ZoneEngine.EventKind.RETEST_HELD?"Retest held":"Retest failed";
                     String evidence=e.kind==ZoneEngine.EventKind.RETEST_HELD?"New pivot confirmed after right-side closes": "Two buffered closes confirmed";
+                    long delayed=now-e.time;
+                    if(delayed>60_000)evidence+=" · confirmed "+(delayed/1000)+"s ago";
                     out.add(new Alert(e.key(),f.label+(pinned?" · Pinned · ":" · ")+kind,band(e.zone)+" · "+evidence,f));
                 }
                 s.close=last;
+                if(watermarks!=null)watermarks.store(f,last);
             }
             // Ignore duplicate or out-of-order ticks, including repeated payloads from the provider.
             if(quote.time<s.quote||(quote.time==s.quote&&quote.mid()==s.price))continue;s.quote=quote.time;s.price=quote.mid();
             Set<String> active=new HashSet<>();
             List<ZoneEngine.Zone> zones=new ArrayList<>(a.zones);zones.sort(Comparator.comparingDouble(z->Math.abs(z.center-quote.mid())));
             for(ZoneEngine.Zone z:zones){
-                boolean pinned=pin!=null&&pin.matches(z);
+                boolean pinned=pinnedZone!=null&&pinnedZone.id.equals(z.id);
                 if(z.reference||(pinned?pin.trigger()!=ZoneSelection.Trigger.APPROACH:!auto))continue;String id=z.id+":"+z.support;active.add(id);
                 double distance=quote.mid()<z.low?z.low-quote.mid():quote.mid()>z.high?quote.mid()-z.high:0;
                 Approach p=s.zones.get(id);if(p==null){p=new Approach();p.armed=z.validSide(quote.mid())&&distance>a.atr*.60;s.zones.put(id,p);continue;}
@@ -79,6 +102,6 @@ public final class SmartAlerts {
         }
         return out;
     }
-    private static String band(ZoneEngine.Zone z){return (z.support?"Support ":"Resistance ")+usd(z.low)+"–"+usd(z.high);}
+    private static String band(ZoneEngine.Zone z){return (z.support?"Support ":"Resistance ")+ZoneSelection.band(z);}
     private static String usd(double p){return String.format(Locale.US,"%.2f",p);}
 }

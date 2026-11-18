@@ -24,7 +24,8 @@ public final class MarketRepository {
         boolean cacheQueued;
         long streamAttempt,nextStream,generation,stateRevision,stateAt;int failures;Boolean providerClosed;
         final Set<HttpURLConnection> connections=ConcurrentHashMap.newKeySet();
-        final ScheduledThreadPoolExecutor workers=new ScheduledThreadPoolExecutor(2);
+        final ScheduledThreadPoolExecutor workers=new ScheduledThreadPoolExecutor(1);
+        final ScheduledThreadPoolExecutor heartbeat=new ScheduledThreadPoolExecutor(1);
         final AtomicBoolean quoteBusy=new AtomicBoolean();
         final Map<Market.Frame,AtomicBoolean> busy=new EnumMap<>(Market.Frame.class);
         final ScheduledThreadPoolExecutor quotes=new ScheduledThreadPoolExecutor(1);
@@ -44,10 +45,14 @@ public final class MarketRepository {
     private long lastSave;
     private final Object diskLock = new Object();
     public volatile Map<Market.Frame,Integer> providerDepth=Collections.emptyMap();
+    public volatile Map<Market.Frame,Integer> requestedDepth=Collections.emptyMap();
+    private volatile Set<Market.Frame> demand=EnumSet.allOf(Market.Frame.class);
+    private final Map<Market.Frame,HistorySchedule> schedule=new EnumMap<>(Market.Frame.class);
+    private final AtomicBoolean changeQueued=new AtomicBoolean();
     private static final Map<String,PollPolicy> PROVIDER_POLICIES=new ConcurrentHashMap<>();
     private final boolean streaming;
     public volatile String streamStatus="Not connected";
-    public volatile long streamTicks;
+    public volatile long streamTicks, streamSubscriptions;
     private final PollPolicy policy;
     private final MarketClock marketClock=new MarketClock();
     public long marketNow(){return marketClock.now(SystemClock.elapsedRealtime());}
@@ -60,6 +65,19 @@ public final class MarketRepository {
     public long attempts(){return attempts.get();}
     public long successes(){return successes.get();}
     public long backoffRemaining(){return policy.remaining(SystemClock.elapsedRealtime());}
+    void demand(Set<Market.Frame> frames){demand=frames.isEmpty()?Collections.emptySet():EnumSet.copyOf(frames);}
+    String feedHolds(){
+        long elapsed=SystemClock.elapsedRealtime(),now=marketNow();
+        List<String> lines=new ArrayList<>();
+        policy.activeHolds(elapsed).forEach((key,hold)->{
+            String resource=key.equals(PollPolicy.REST)?"REST":key.equals(PollPolicy.STREAM)?"Stream reconnect":key;
+            long wait=hold.until()-elapsed;
+            String reason=hold.code()==429?"rate limited":"access refused";
+            String until=now>0&&wait<30*86_400_000L?" · retry "+DataFreshness.date(now+wait)+" UTC":"";
+            lines.add(resource+" · "+reason+" (HTTP "+hold.code()+") · "+((wait-1)/1000+1)+"s"+until);
+        });
+        return lines.isEmpty()?"No provider cooldown":String.join("\n",lines);
+    }
     public boolean running(){Session s=session;return s!=null&&s.active;}
     public volatile Market.Quote quote;
     public volatile boolean quoteOnline;
@@ -75,25 +93,111 @@ public final class MarketRepository {
         boot=android.provider.Settings.Global.getInt(context.getContentResolver(),"boot_count",-1);listener=l;feed=transport==null?this::get:transport;
         policy=transport==null?PROVIDER_POLICIES.computeIfAbsent("biquote-mid",k->new PollPolicy()):new PollPolicy();
         cache=new AtomicFile(new File(context.getFilesDir(),"biquote-xauusd-mid-v1.json"));
-        if(budget!=null&&boot>=0&&budget.getInt("boot",-2)==boot)policy.restore(budget.getLong("until",0),SystemClock.elapsedRealtime());
+        for(Market.Frame frame:Market.Frame.values())schedule.put(frame,new HistorySchedule());
+        restoreHolds();
     }
     public String sourceName(){return "biquote · XAUUSD · MID analysis";}
     public void start(){
         synchronized(lock){
-            if(session!=null&&session.active)return;Session s=new Session();session=s;streamStatus="Connecting";quoteOnline=false;liveSynced=Collections.emptyMap();providerDepth=Collections.emptyMap();
-            s.workers.execute(()->{if(!loaded){load(s);synchronized(lock){if(current(s))loaded=true;}notifyChange(s);}});
-            s.quotes.scheduleWithFixedDelay(()->{ensureStream(s);Market.Quote q=quote;if(!s.subscribed||q==null||!quoteOnline||marketNow()-q.time>15_000)fetchQuote(s,false);},0,1,TimeUnit.SECONDS);
-            for(Market.Frame f:Market.Frame.values())s.workers.scheduleWithFixedDelay(()->fetchHistory(s,f,false),f.ordinal(),1,TimeUnit.SECONDS);
+            if(session!=null&&session.active)return;
+            Session s=new Session();
+            session=s;
+            streamStatus="Connecting";
+            quoteOnline=false;
+            s.workers.execute(()->{
+                if(!loaded){
+                    load(s);
+                    synchronized(lock){if(current(s))loaded=true;}
+                    notifyChange(s);
+                }
+            });
+            s.quotes.scheduleWithFixedDelay(()->{
+                ensureStream(s);
+                Market.Quote q=quote;
+                if(!s.subscribed||q==null||!quoteOnline||marketNow()-q.time>15_000)fetchQuote(s,false);
+            },0,1,TimeUnit.SECONDS);
+            if(streaming)s.heartbeat.scheduleWithFixedDelay(()->{
+                BiquoteStream stream=s.stream;
+                if(current(s)&&stream!=null)stream.maintain();
+            },1,1,TimeUnit.SECONDS);
+            for(Market.Frame f:Market.Frame.values()){
+                s.workers.scheduleWithFixedDelay(()->{
+                    if(demand.contains(f))fetchHistory(s,f,false);
+                },f.ordinal(),1,TimeUnit.SECONDS);
+            }
         }
     }
-    public void stop(){Session s;synchronized(lock){s=session;session=null;streamStatus="Stopped";quoteOnline=false;liveSynced=Collections.emptyMap();providerDepth=Collections.emptyMap();if(s!=null){s.active=false;s.workers.shutdownNow();s.quotes.shutdownNow();policy.releaseOwner(s);}}if(s!=null){if(s.stream!=null)s.stream.close();for(HttpURLConnection c:s.connections)c.disconnect();}}
-    private void completeRequest(Session s,String key,long delay,boolean limited){synchronized(lock){if(current(s))policy.complete(key,SystemClock.elapsedRealtime(),delay,limited);else if(limited)policy.restore(SystemClock.elapsedRealtime()+Math.min(PollPolicy.MAX_RETRY,delay),SystemClock.elapsedRealtime());}persistLimit(limited);}
+
+    public void stop(){
+        Session s;
+        synchronized(lock){
+            s=session;
+            session=null;
+            streamStatus="Stopped";
+            quoteOnline=false;
+            if(s!=null){
+                s.active=false;
+                s.workers.shutdownNow();
+                s.quotes.shutdownNow();
+                s.heartbeat.shutdownNow();
+                policy.releaseOwner(s);
+            }
+        }
+        if(s!=null){
+            if(s.stream!=null)s.stream.close();
+            for(HttpURLConnection connection:s.connections)connection.disconnect();
+        }
+    }
+
+    private void completeRequest(Session s,String key,long delay,FeedError error){
+        long elapsed=SystemClock.elapsedRealtime();
+        boolean persisted=false;
+        synchronized(lock){
+            if(error!=null&&error.status==429){
+                policy.limit(PollPolicy.REST,elapsed,error.retryMs,429);
+                persisted=true;
+            }else if(error!=null&&(error.status==401||error.status==403)){
+                delay=policy.refusal(key,elapsed,error.status,error.retryMs);
+                persisted=true;
+            }else if(error==null&&current(s)){
+                policy.success(key);
+            }
+            if(current(s))policy.complete(key,elapsed,delay,false);
+        }
+        if(persisted)persistHolds();
+    }
+
     private boolean current(Session s){return session==s&&s.active;}
-    private void notifyChange(Session s){if(current(s))main.post(()->{if(current(s))listener.changed();});}
-    public boolean loading(){Session s=session;if(s==null)return false;if(s.quoteBusy.get())return true;for(AtomicBoolean b:s.busy.values())if(b.get())return true;return false;}
-    public void refresh(){synchronized(lock){Session s=session;long now=SystemClock.elapsedRealtime();if(s==null||!s.active||now-lastManual<1000)return;lastManual=now;try{s.quotes.execute(()->fetchQuote(s,true));for(Market.Frame f:Market.Frame.values())s.workers.execute(()->fetchHistory(s,f,true));}catch(RejectedExecutionException ignored){}}}
+
+    private void notifyChange(Session s){
+        if(!current(s)||!changeQueued.compareAndSet(false,true))return;
+        main.postDelayed(()->{
+            changeQueued.set(false);
+            if(running())listener.changed();
+        },250);
+    }
+
+    public boolean loading(){
+        Session s=session;
+        if(s==null)return false;
+        if(s.quoteBusy.get())return true;
+        for(AtomicBoolean b:s.busy.values())if(b.get())return true;
+        return false;
+    }
+
+    public void refresh(Market.Frame visible){
+        synchronized(lock){
+            Session s=session;
+            long now=SystemClock.elapsedRealtime();
+            if(s==null||!s.active||now-lastManual<1000)return;
+            lastManual=now;
+            s.quotes.execute(()->fetchQuote(s,true));
+            if(visible!=null)s.workers.execute(()->fetchHistory(s,visible,true));
+        }
+    }
+
     static int historyLimit(Market.Frame f){return f==Market.Frame.H1?1000:f==Market.Frame.H4?360:f==Market.Frame.M15?480:720;}
-    private String endpoint(String interval,int limit,long now){return "https://biquote.io/api/XAUUSD"+(interval.equals("TICK")?"":"/ohlc?interval="+interval+"&limit="+limit);}
+    private String endpoint(String interval,int limit){return "https://biquote.io/api/XAUUSD"+(interval.equals("TICK")?"":"/ohlc?interval="+interval+"&limit="+limit);}
     private boolean currentStream(Session s,long generation){return current(s)&&s.generation==generation;}
     private void marketState(Session s,boolean closed){
         boolean wasClosed=Boolean.TRUE.equals(s.providerClosed)||(quote!=null&&quote.marketClosed);
@@ -102,14 +206,15 @@ public final class MarketRepository {
         if(wasClosed&&!closed)policy.marketOpened();
     }
     private BiquoteStream.Listener streamListener(Session s,long generation){return new BiquoteStream.Listener(){
-        public void date(String value){try{synchronized(lock){if(currentStream(s,generation))marketClock.sync(java.time.ZonedDateTime.parse(value,java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli(),SystemClock.elapsedRealtime());}}catch(Exception ignored){}}
-        public void status(String value,boolean subscribed){synchronized(lock){if(!currentStream(s,generation))return;s.subscribed=subscribed;streamStatus=value;if(subscribed){s.failures=0;s.nextStream=SystemClock.elapsedRealtime()+5000;}}notifyChange(s);}
+        public void date(String value){try{synchronized(lock){if(currentStream(s,generation))marketClock.sample(java.time.ZonedDateTime.parse(value,java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli(),s.streamAttempt,SystemClock.elapsedRealtime());}}catch(Exception ignored){}}
+        public void status(String value,boolean subscribed){synchronized(lock){if(!currentStream(s,generation))return;s.subscribed=subscribed;streamStatus=value;if(subscribed){streamSubscriptions++;policy.success(PollPolicy.STREAM);s.failures=0;s.nextStream=SystemClock.elapsedRealtime()+5000;}}notifyChange(s);}
         public void state(boolean closed){synchronized(lock){if(!currentStream(s,generation))return;marketState(s,closed);}notifyChange(s);}
         public void tick(JSONObject j){try{
             long now=marketNow();if(now==0)return;Market.Quote next=BiquoteCodec.quote(j,now);
+            if(next.time>now+MarketClock.FUTURE_TOLERANCE)return;
             synchronized(lock){
                 if(!currentStream(s,generation))return;streamTicks++;
-                if(quote!=null&&quote.time<=now+1000&&next.time<quote.time)return;
+                if(quote!=null&&quote.time<=now+MarketClock.FUTURE_TOLERANCE&&next.time<quote.time)return;
                 boolean wasClosed=quote!=null&&quote.marketClosed;
                 Boolean stated=BiquoteCodec.marketState(j);if(stated!=null)marketState(s,stated);
                 // A subscription snapshot must not freeze Friday's closed state after trading resumes.
@@ -121,39 +226,113 @@ public final class MarketRepository {
                 if(wasClosed&&!closed)policy.marketOpened();
             }save(s,false);notifyChange(s);
         }catch(Exception ignored){}}
-        public void limited(){synchronized(lock){long now=SystemClock.elapsedRealtime();if(currentStream(s,generation))policy.complete("stream",now,60_000,true);else policy.restore(now+60_000,now);}persistLimit(true);notifyChange(s);}
+        public void limited(){
+            policy.limit(PollPolicy.STREAM,SystemClock.elapsedRealtime(),60_000,429);
+            persistHolds();
+            notifyChange(s);
+        }
+        public void refused(int status){
+            policy.refusal(PollPolicy.STREAM,SystemClock.elapsedRealtime(),status,0);
+            persistHolds();
+            notifyChange(s);
+        }
     };}
+
     private void ensureStream(Session s){
         synchronized(lock){
-            if(!streaming||!current(s))return;long elapsed=SystemClock.elapsedRealtime();
-            if(policy.remaining(elapsed)>0){if(s.stream!=null)s.stream.close();return;}
-            if(s.stream!=null&&!s.stream.isClosed()){if(!s.subscribed&&elapsed-s.streamAttempt>20_000)s.stream.close();return;}
-            if(elapsed<s.nextStream||!policy.claim("stream",elapsed,false,s))return;
-            s.streamAttempt=elapsed;s.nextStream=elapsed+Math.min(60_000,5000L<<Math.min(4,s.failures++));long generation=++s.generation;
-            try{s.stream=new BiquoteStream(streamListener(s,generation));s.stream.connect();}
-            catch(Exception failure){streamStatus="Stream unavailable; snapshot fallback";}
-            finally{completeRequest(s,"stream",5000,false);}
+            if(!streaming||!current(s))return;
+            long elapsed=SystemClock.elapsedRealtime();
+            // An established stream keeps sending ticks during a REST cooldown.
+            if(s.stream!=null&&!s.stream.isClosed()){
+                if(!s.subscribed&&elapsed-s.streamAttempt>20_000)s.stream.close();
+                return;
+            }
+            if(elapsed<s.nextStream||!policy.claim(PollPolicy.STREAM,elapsed,false,s))return;
+            s.streamAttempt=elapsed;
+            s.nextStream=elapsed+Math.min(60_000,5000L<<Math.min(4,s.failures++));
+            long generation=++s.generation;
+            try{
+                s.stream=new BiquoteStream(streamListener(s,generation));
+                s.stream.connect();
+            }catch(Exception failure){
+                streamStatus="Stream unavailable; snapshot fallback";
+            }finally{
+                policy.complete(PollPolicy.STREAM,elapsed,5000,false);
+            }
         }
     }
+
     static final class FeedError extends IOException {
         final long retryMs;
-        final boolean rateLimited;
-        FeedError(String message,long retry){this(message,retry,false);}
-        FeedError(String message,long retry,boolean limited){super(message);retryMs=retry;rateLimited=limited;}
+        final int status;
+        FeedError(String message,long retry){this(message,retry,0);}
+        FeedError(String message,long retry,boolean limited){this(message,retry,limited?429:0);}
+        FeedError(String message,long retry,int status){super(message);retryMs=retry;this.status=status;}
     }
+
+    static URL redirect(URL source,String location)throws IOException{
+        if(location==null||location.trim().isEmpty())throw new IOException("Missing redirect target");
+        URL target=new URL(source,location);
+        if(!"https".equals(target.getProtocol())||!"biquote.io".equalsIgnoreCase(target.getHost())
+            ||(target.getPort()!=-1&&target.getPort()!=443)||target.getUserInfo()!=null){
+            throw new IOException("Redirect target outside the provider HTTPS origin");
+        }
+        return target;
+    }
+
     private String get(String address)throws Exception{
-        HttpURLConnection c=(HttpURLConnection)new URL(address).openConnection();c.setConnectTimeout(12_000);c.setReadTimeout(12_000);c.setUseCaches(false);
-        Session owner=requestSession.get();synchronized(lock){if(owner==null||!current(owner))throw new IOException("Obsolete request");owner.connections.add(c);}
-        c.setRequestProperty("User-Agent","AurumScalp/2.8 (Android; XAUUSD viewer)");c.setRequestProperty("Accept","application/json");
+        return get(new URL(address),true);
+    }
+
+    private String get(URL endpoint,boolean follow)throws Exception{
+        HttpURLConnection c=(HttpURLConnection)endpoint.openConnection();
+        c.setConnectTimeout(12_000);
+        c.setReadTimeout(12_000);
+        c.setUseCaches(false);
+        Session owner=requestSession.get();
+        synchronized(lock){
+            if(owner==null||!current(owner))throw new IOException("Obsolete request");
+            owner.connections.add(c);
+        }
+        c.setRequestProperty("User-Agent",BiquoteStream.USER_AGENT);
+        c.setRequestProperty("Accept","application/json");
         c.setInstanceFollowRedirects(false);
+        URL next=null;
         try{
+            long started=SystemClock.elapsedRealtime();
             int status=c.getResponseCode();
-            synchronized(lock){if(current(owner)){marketClock.sync(c.getDate(),SystemClock.elapsedRealtime());responseTime.set(c.getDate());}}
-            if(status!=200){if(status==401||status==403)throw new FeedError("biquote access denied; waiting before retry",3600000,true);if(status==429)throw new FeedError("Provider rate limit; waiting before retry",RetryGate.retryAfter(c.getHeaderField("Retry-After"),System.currentTimeMillis()),true);throw new FeedError("Provider temporarily unavailable ("+status+")",30_000);}
-            try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){
-                byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1){out.write(b,0,n);if(out.size()>3_000_000)throw new FeedError("Invalid feed response size",60_000);}return out.toString(StandardCharsets.UTF_8.name());
+            long received=SystemClock.elapsedRealtime(),date=c.getDate();
+            synchronized(lock){
+                if(current(owner)&&c.getHeaderFieldInt("Age",0)==0){
+                    marketClock.sample(date,started,received);
+                    responseTime.set(date);
+                }
             }
-        }finally{owner.connections.remove(c);c.disconnect();}
+            long retryBase=date>0?date:System.currentTimeMillis();
+            if(status==429)throw new FeedError("Biquote rate limit (HTTP 429)",RetryGate.retryAfter(c.getHeaderField("Retry-After"),retryBase),429);
+            if(status==401||status==403)throw new FeedError("Biquote refused access (HTTP "+status+")",
+                RetryGate.retryAfter(c.getHeaderField("Retry-After"),retryBase,0),status);
+            if(status==301||status==302||status==303||status==307||status==308){
+                if(follow)try{next=redirect(endpoint,c.getHeaderField("Location"));}catch(IOException ignored){}
+                if(next==null)throw new FeedError("Feed endpoint moved (HTTP "+status+")",600_000);
+            }else{
+                if(status!=200)throw new FeedError("Provider temporarily unavailable (HTTP "+status+")",30_000);
+                try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){
+                    byte[] b=new byte[8192];
+                    int n;
+                    while((n=in.read(b))!=-1){
+                        out.write(b,0,n);
+                        if(out.size()>3_000_000)throw new FeedError("Invalid feed response size",60_000);
+                    }
+                    return out.toString(StandardCharsets.UTF_8.name());
+                }
+            }
+        }finally{
+            owner.connections.remove(c);
+            c.disconnect();
+        }
+        attempts.incrementAndGet();
+        return get(next,false);
     }
     static JSONArray unwrap(String input)throws Exception{
         String s=input.trim();if(!s.startsWith("["))throw new IOException("Unexpected saved data");
@@ -166,26 +345,77 @@ public final class MarketRepository {
     }
     private void fetchQuote(Session s,boolean manual){
         if(!current(s)||!s.quoteBusy.compareAndSet(false,true))return;
-        if(!policy.claim("quote",SystemClock.elapsedRealtime(),manual,s)){s.quoteBusy.set(false);return;}
-        long delay=15_000;boolean limited=false,quoteOk=false;
+        if(!policy.claim("quote",SystemClock.elapsedRealtime(),manual,s)){
+            s.quoteBusy.set(false);
+            return;
+        }
+        long delay=15_000;
+        FeedError error=null;
         try{
-            requestSession.set(s);long revision;synchronized(lock){revision=s.stateRevision;}attempts.incrementAndGet();String body=feed.get(endpoint("TICK",3,System.currentTimeMillis()));long now=marketNow();if(now==0)throw new IOException("Server time unavailable");Market.Quote next=BiquoteCodec.quote(body,now);if(next.marketClosed)delay=60_000;
-            synchronized(lock){if(!current(s))return;Boolean stated=BiquoteCodec.marketState(new JSONObject(body));if(stated!=null&&s.stateRevision==revision)marketState(s,stated);if(quote==null||quote.time>now+1000||(next.time>quote.time||(next.time==quote.time&&!s.subscribed)))quote=next;if(s.providerClosed!=null){Market.Quote q=quote;quote=new Market.Quote(q.time,q.bid,q.ask,s.providerClosed,q.providerStale);}quoteOnline=true;forming.tick(quote,true,now);quoteError="";successes.incrementAndGet();quoteOk=true;}save(s,false);
-        }catch(Exception e){delay=e instanceof FeedError?((FeedError)e).retryMs:30_000;limited=e instanceof FeedError&&((FeedError)e).rateLimited;synchronized(lock){if(current(s))quoteError=friendly(e);}}
-        finally{synchronized(lock){if(quoteOk)delay=quote!=null&&quote.marketClosed?60_000:15_000;completeRequest(s,"quote",delay,limited);}requestSession.remove();responseTime.remove();s.quoteBusy.set(false);notifyChange(s);}
+            requestSession.set(s);
+            long revision;
+            synchronized(lock){revision=s.stateRevision;}
+            attempts.incrementAndGet();
+            String body=feed.get(endpoint("TICK",0));
+            long now=marketNow();
+            if(now==0)throw new IOException("Server time unavailable");
+            JSONObject packet=new JSONObject(body);
+            Market.Quote next=BiquoteCodec.quote(packet,now);
+            if(next.time>now+MarketClock.FUTURE_TOLERANCE)throw new IOException("Quote time unverified");
+            synchronized(lock){
+                if(!current(s))return;
+                Boolean stated=BiquoteCodec.marketState(packet);
+                if(stated!=null&&s.stateRevision==revision)marketState(s,stated);
+                if(quote==null||quote.time>now+MarketClock.FUTURE_TOLERANCE
+                    ||next.time>quote.time||(next.time==quote.time&&!s.subscribed))quote=next;
+                if(s.providerClosed!=null){
+                    Market.Quote q=quote;
+                    quote=new Market.Quote(q.time,q.bid,q.ask,s.providerClosed,q.providerStale);
+                }
+                quoteOnline=true;
+                forming.tick(quote,true,now);
+                quoteError="";
+                successes.incrementAndGet();
+                delay=quote.marketClosed?60_000:15_000;
+            }
+            save(s,false);
+        }catch(Exception e){
+            error=failedRequest(e);
+            synchronized(lock){if(current(s))quoteError=friendly(e);}
+        }finally{
+            completeRequest(s,"quote",error==null?delay:error.retryMs,error);
+            requestSession.remove();
+            responseTime.remove();
+            s.quoteBusy.set(false);
+            notifyChange(s);
+        }
     }
+
     private void fetchHistory(Session s,Market.Frame frame,boolean manual){
         if(!current(s)||!s.busy.get(frame).compareAndSet(false,true))return;
-        if(!policy.claim(frame.name(),SystemClock.elapsedRealtime(),manual,s)){s.busy.get(frame).set(false);return;}
-        long delay=frame==Market.Frame.M1?30_000:frame.scalp()?60_000:180_000;boolean limited=false,historyOk=false;
+        if(!policy.claim(frame.name(),SystemClock.elapsedRealtime(),manual,s)){
+            s.busy.get(frame).set(false);
+            return;
+        }
+        long delay=30_000;
+        FeedError error=null;
         try{
-            requestSession.set(s);long now=marketNow()>0?marketNow():System.currentTimeMillis();String interval=BiquoteCodec.interval(frame);
-            attempts.incrementAndGet();String body=feed.get(endpoint(interval,historyLimit(frame),now));now=marketNow();if(now==0)throw new IOException("Server time unavailable; closed candles not recalculated");
-            List<Market.Candle> incoming=BiquoteCodec.candles(body,frame,now,80);
+            requestSession.set(s);
+            long now=marketNow();
             List<Market.Candle> previous=candles.getOrDefault(frame,Collections.emptyList());
-            List<Market.Candle> next=BiquoteCodec.merge(previous,incoming,body,frame,historyLimit(frame));
             ZoneEngine.Analysis existing=analyses.get(frame);
-            boolean changed=existing==null || !HistoryQuality.sameBars(previous,next);
+            HistorySchedule cadence=schedule.get(frame);
+            int fullLimit=historyLimit(frame);
+            int limit=cadence.requestLimit(frame,previous.size(),DataFreshness.lastClose(existing),now,fullLimit);
+            attempts.incrementAndGet();
+            String body=feed.get(endpoint(BiquoteCodec.interval(frame),limit));
+            now=marketNow();
+            if(now==0)throw new IOException("Server time unavailable; closed candles not recalculated");
+            List<Market.Candle> incoming=BiquoteCodec.candles(body,frame,now,0);
+            List<Market.Candle> next=BiquoteCodec.merge(previous,incoming,body,frame,fullLimit);
+            if(next.size()<HistorySchedule.MIN_BARS)throw new FeedError("Limited history · "+next.size()+" confirmed "+frame.label+
+                " candles; need "+HistorySchedule.MIN_BARS,180_000);
+            boolean changed=existing==null||!HistoryQuality.sameBars(previous,next);
             ZoneEngine.Analysis analysis=changed?ZoneEngine.calculate(next,frame,now):existing;
             Market.Candle preview=BiquoteCodec.forming(body,frame,now);
             synchronized(lock){
@@ -193,22 +423,85 @@ public final class MarketRepository {
                 forming.confirm(frame,next);
                 Long responseDate=responseTime.get();
                 forming.seed(frame,preview,responseDate==null||responseDate<=0?now:responseDate);
-                if(changed){candles=with(candles,frame,next);analyses=with(analyses,frame,analysis);}
+                if(changed){
+                    candles=with(candles,frame,next);
+                    analyses=with(analyses,frame,analysis);
+                }
+                if(!errors.isEmpty()){
+                    Map<Market.Frame,String> clean=new EnumMap<>(Market.Frame.class);
+                    clean.putAll(errors);
+                    clean.remove(frame);
+                    errors=Collections.unmodifiableMap(clean);
+                }
                 long fetched=marketNow();
-                Map<Market.Frame,String> clean=new EnumMap<>(Market.Frame.class);clean.putAll(errors);clean.remove(frame);
-                errors=Collections.unmodifiableMap(clean);
                 synced=with(synced,frame,fetched);
                 liveSynced=with(liveSynced,frame,fetched);
                 providerDepth=with(providerDepth,frame,incoming.size());
-                successes.incrementAndGet();historyOk=true;
+                requestedDepth=with(requestedDepth,frame,limit);
+                successes.incrementAndGet();
+                delay=cadence.afterResponse(frame,fetched,DataFreshness.lastClose(analysis),quote!=null&&quote.marketClosed,limit==fullLimit);
                 if(changed)queueCache(s);
             }
-        }catch(Exception e){delay=e instanceof FeedError?((FeedError)e).retryMs:30_000;limited=e instanceof FeedError&&((FeedError)e).rateLimited;synchronized(lock){if(current(s)){Map<Market.Frame,String> err=new EnumMap<>(Market.Frame.class);err.putAll(errors);err.put(frame,friendly(e));errors=Collections.unmodifiableMap(err);}}}
-        finally{synchronized(lock){if(historyOk)delay=quote!=null&&quote.marketClosed?600_000:frame==Market.Frame.M1?30_000:frame.scalp()?60_000:180_000;completeRequest(s,frame.name(),delay,limited);}requestSession.remove();responseTime.remove();s.busy.get(frame).set(false);notifyChange(s);}
+        }catch(Exception e){
+            error=failedRequest(e);
+            synchronized(lock){
+                if(current(s)){
+                    Map<Market.Frame,String> err=new EnumMap<>(Market.Frame.class);
+                    err.putAll(errors);
+                    err.put(frame,friendly(e));
+                    errors=Collections.unmodifiableMap(err);
+                }
+            }
+        }finally{
+            completeRequest(s,frame.name(),error==null?delay:error.retryMs,error);
+            requestSession.remove();
+            responseTime.remove();
+            s.busy.get(frame).set(false);
+            notifyChange(s);
+        }
     }
-    // Worker-only synchronous write intentionally survives immediate process death after 429.
+
+    private static FeedError failedRequest(Exception error){
+        return error instanceof FeedError feedError?feedError:new FeedError(friendly(error),30_000);
+    }
+
+    private void restoreHolds(){
+        if(budget==null)return;
+        long elapsed=SystemClock.elapsedRealtime(),wall=System.currentTimeMillis();
+        boolean sameBoot=boot>=0&&budget.getInt("boot",-2)==boot;
+        if(sameBoot){
+            long legacy=budget.getLong("until",0)-elapsed;
+            if(legacy>0)policy.limit(PollPolicy.REST,elapsed,legacy,429);
+        }
+        try{
+            JSONObject saved=new JSONObject(budget.getString("holds","{}"));
+            for(Iterator<String> keys=saved.keys();keys.hasNext();){
+                String key=keys.next();
+                JSONArray value=saved.getJSONArray(key);
+                long remaining=sameBoot?value.getLong(0)-elapsed:value.getLong(1)-wall;
+                int status=value.getInt(2);
+                if(remaining>0)policy.limit(key,elapsed,remaining,status);
+            }
+        }catch(JSONException ignored){}
+    }
+
+    // A process restart cannot remove a cooldown persisted from a provider response.
     @android.annotation.SuppressLint("ApplySharedPref")
-    private void persistLimit(boolean limited){if(limited&&budget!=null&&boot>=0){synchronized(policy){long now=SystemClock.elapsedRealtime();budget.edit().putInt("boot",boot).putLong("until",now+policy.remaining(now)).commit();}}}
+    private void persistHolds(){
+        if(budget==null)return;
+        synchronized(policy){
+            long elapsed=SystemClock.elapsedRealtime(),wall=System.currentTimeMillis();
+            JSONObject saved=new JSONObject();
+            try{
+                for(var entry:policy.activeHolds(elapsed).entrySet()){
+                    PollPolicy.Hold hold=entry.getValue();
+                    saved.put(entry.getKey(),new JSONArray().put(hold.until())
+                        .put(PollPolicy.deadline(wall,hold.until()-elapsed)).put(hold.code()));
+                }
+                budget.edit().putInt("boot",boot).remove("until").putString("holds",saved.toString()).commit();
+            }catch(JSONException ignored){}
+        }
+    }
     private static String friendly(Exception e){
         if(e instanceof FeedError)return e.getMessage();if(e instanceof UnknownHostException)return "No internet connection";if(e instanceof SocketTimeoutException)return "Market-data connection timed out";if(e instanceof ConnectException)return "Could not connect to the price feed";if(e instanceof javax.net.ssl.SSLException)return "Secure connection could not be established";return "Could not refresh market data";
     }
@@ -258,7 +551,7 @@ public final class MarketRepository {
             JSONObject root=new JSONObject(out.toString(StandardCharsets.UTF_8.name()));if(root.optInt("version")!=4||!"biquote".equals(root.optString("provider"))||!"MID".equals(root.optString("basis")))return;long now=root.optLong("marketTime",0);
             Market.Quote stored=null;if(root.has("quote"))try{JSONArray q=root.getJSONArray("quote");stored=new Market.Quote(q.getLong(0),q.getDouble(1),q.getDouble(2),q.optBoolean(3,false),q.optBoolean(4,false));if(!stored.valid())stored=null;}catch(Exception ignored){}
             Map<Market.Frame,List<Market.Candle>> data=new EnumMap<>(Market.Frame.class);Map<Market.Frame,Long> times=new EnumMap<>(Market.Frame.class);
-            for(Market.Frame f:Market.Frame.values())try{data.put(f,parseCandles(root.getJSONArray(f.name()).toString(),f,now,80));times.put(f,root.optLong(f.name()+"Synced"));}catch(Exception ignored){}
+            for(Market.Frame f:Market.Frame.values())try{data.put(f,parseCandles(root.getJSONArray(f.name()).toString(),f,now,HistorySchedule.MIN_BARS));times.put(f,root.optLong(f.name()+"Synced"));}catch(Exception ignored){}
             Map<Market.Frame,ZoneEngine.Analysis> built=new EnumMap<>(Market.Frame.class);for(Map.Entry<Market.Frame,List<Market.Candle>> e:data.entrySet())built.put(e.getKey(),ZoneEngine.calculate(e.getValue(),e.getKey(),now));
             synchronized(lock){if(!current(s))return;if(quote==null)quote=stored;Map<Market.Frame,List<Market.Candle>> merged=new EnumMap<>(Market.Frame.class);merged.putAll(data);merged.putAll(candles);Map<Market.Frame,ZoneEngine.Analysis> all=new EnumMap<>(Market.Frame.class);all.putAll(built);all.putAll(analyses);Map<Market.Frame,Long> allTimes=new EnumMap<>(Market.Frame.class);allTimes.putAll(times);allTimes.putAll(synced);candles=Collections.unmodifiableMap(merged);analyses=Collections.unmodifiableMap(all);synced=Collections.unmodifiableMap(allTimes);}
         }catch(Exception ignored){}

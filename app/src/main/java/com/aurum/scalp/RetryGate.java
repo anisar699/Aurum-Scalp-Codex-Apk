@@ -1,20 +1,29 @@
 package com.aurum.scalp;
 
+import java.math.BigInteger;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 
-/** Explicit provider rate limits cannot be bypassed by manual refresh. */
 final class RetryGate {
-    private long next;
-    private boolean rateLimited;
-    synchronized boolean eligible(long now){return now>=next;}
-    synchronized void failure(long now,long delay,boolean limited){next=now+Math.min(3_600_000L,Math.max(0,delay));rateLimited=limited;}
-    synchronized void success(){next=0;rateLimited=false;}
-    synchronized void manualRefresh(){if(!rateLimited)next=0;}
-    static long retryAfter(String header,long now){
-        if(header!=null)try{return Math.min(3_600_000L,Math.max(60_000,new java.math.BigInteger(header.trim()).max(java.math.BigInteger.ZERO).min(java.math.BigInteger.valueOf(3600)).longValue()*1000));}catch(Exception ignored){
-            try{return Math.min(3_600_000L,Math.max(60_000,ZonedDateTime.parse(header,DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli()-now));}catch(Exception ignoredDate){}
+    private RetryGate() {}
+
+    /** Delta-seconds and HTTP dates establish the minimum wait. */
+    static long retryAfter(String header, long now) {
+        return retryAfter(header, now, 60_000);
+    }
+
+    static long retryAfter(String header, long now, long fallback) {
+        if (header == null) return fallback;
+        String value = header.trim();
+        try {
+            if (value.matches("[0-9]+")) {
+                return new BigInteger(value).multiply(BigInteger.valueOf(1_000))
+                    .min(BigInteger.valueOf(Long.MAX_VALUE)).longValue();
+            }
+            return Math.max(0, ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME)
+                .toInstant().toEpochMilli() - now);
+        } catch (RuntimeException invalid) {
+            return fallback;
         }
-        return 60_000;
     }
 }

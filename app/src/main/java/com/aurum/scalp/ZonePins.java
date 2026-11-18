@@ -27,6 +27,9 @@ final class ZonePins {
     Map<Market.Frame, ZoneSelection.Pin> current() { return Collections.unmodifiableMap(pins); }
     void put(ZoneEngine.Zone zone, ZoneSelection.Trigger trigger) {
         if (zone.reference && (!zone.retestWatch || trigger != ZoneSelection.Trigger.RETEST)) return;
+        bind(zone,trigger);
+    }
+    void bind(ZoneEngine.Zone zone, ZoneSelection.Trigger trigger) {
         try {
             JSONObject j = new JSONObject().put("id", zone.id).put("low", zone.low).put("high", zone.high)
                 .put("support", zone.support).put("trigger", trigger.name());

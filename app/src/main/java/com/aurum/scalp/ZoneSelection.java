@@ -18,6 +18,26 @@ final class ZoneSelection {
     record Pin(Market.Frame frame, String id, double low, double high, boolean support, Trigger trigger) {
         boolean matches(ZoneEngine.Zone zone) { return zone.frame == frame && id.equals(zone.id); }
     }
+    static ZoneEngine.Zone resolve(Pin pin,ZoneEngine.Analysis analysis){
+        if(pin==null||analysis==null||pin.frame()!=analysis.frame)return null;
+        List<ZoneEngine.Zone> candidates=new ArrayList<>(analysis.zones);
+        candidates.addAll(analysis.watchZones);
+        ZoneEngine.Zone best=null;
+        double bestOverlap=-1,bestDistance=Double.POSITIVE_INFINITY;
+        for(ZoneEngine.Zone zone:candidates){
+            if(pin.matches(zone))return zone;
+            if(zone.support!=pin.support()&&!zone.flipped&&!zone.retestWatch)continue;
+            double overlap=Math.max(0,Math.min(pin.high(),zone.high)-Math.max(pin.low(),zone.low))
+                /Math.max(.00001,Math.min(pin.high()-pin.low(),zone.width()));
+            double distance=Math.abs((pin.low()+pin.high())/2-zone.center);
+            if(overlap<.5&&distance>analysis.atr*.25)continue;
+            if(overlap>bestOverlap||overlap==bestOverlap&&distance<bestDistance){
+                best=zone;bestOverlap=overlap;bestDistance=distance;
+            }
+        }
+        return best;
+    }
+
     private static final Comparator<ZoneEngine.Zone> MOST_REACTIONS =
         Comparator.comparingInt((ZoneEngine.Zone zone) -> zone.tests).reversed();
 
@@ -48,5 +68,5 @@ final class ZoneSelection {
         return result;
     }
     static String money(double value) { return String.format(Locale.US, "%.2f", value); }
-    static String band(ZoneEngine.Zone z) { return money(z.low) + "–" + money(z.high); }
+    static String band(ZoneEngine.Zone z) { return PriceFormat.low(z.low) + "–" + PriceFormat.high(z.high); }
 }

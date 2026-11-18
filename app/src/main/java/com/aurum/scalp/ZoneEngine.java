@@ -111,11 +111,11 @@ public final class ZoneEngine {
         return new Zone(f,z.low,z.high,z.cap,watch?z.watchSupport:z.support,watch,z.everFlipped,watch?0:z.tests,bars.get(z.lastPivot).time,watch?0:Market.closeTime(bars.get(z.confirmed),f.duration()),watch,z.id);
     }
     public static double widthCap(Market.Frame frame,double atr,double price){return Math.max(frame.minWidth,Math.min(atr*frame.widthAtr,price*frame.widthPrice));}
-    public static double[] atrSeries(List<Market.Candle> bars){
+    public static double[] atrSeries(List<Market.Candle> bars,long duration){
         double[] out=new double[bars.size()];double avg=0;
         for(int i=0;i<bars.size();i++){
             Market.Candle c=bars.get(i);double tr=c.high-c.low;
-            if(i>0)tr=Math.max(tr,Math.max(Math.abs(c.high-bars.get(i-1).close),Math.abs(c.low-bars.get(i-1).close)));
+            if(i>0&&Market.closeTime(bars.get(i-1),duration)==c.time)tr=Math.max(tr,Math.max(Math.abs(c.high-bars.get(i-1).close),Math.abs(c.low-bars.get(i-1).close)));
             avg=i<14?(avg*i+tr)/(i+1):(avg*13+tr)/14;out[i]=avg;
         }return out;
     }
@@ -144,7 +144,7 @@ public final class ZoneEngine {
         }return true;
     }
     public static Analysis calculate(List<Market.Candle> input,Market.Frame frame,long now){
-        List<Market.Candle> bars=Market.closed(input,frame.duration(),now);double[] atr=atrSeries(bars);int n=bars.size();
+        List<Market.Candle> bars=Market.closed(input,frame.duration(),now);double[] atr=atrSeries(bars,frame.duration());int n=bars.size();
         if(n<40)return new Analysis(frame,bars,Collections.emptyList(),Collections.emptyList(),n==0?0:atr[n-1],0,"Insufficient closed history");
         int minPivot=Math.max(frame.wing,n-frame.lookback),start=minPivot+frame.wing,broken=0;List<Working> work=new ArrayList<>();List<Pivot> events=new ArrayList<>();List<Event> lifecycle=new ArrayList<>();
         for(int j=start;j<n;j++){

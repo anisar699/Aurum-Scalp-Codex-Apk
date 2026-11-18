@@ -38,7 +38,7 @@ public class Release28Test {
         assertTrue(evaluate(CLOSE + 2000, CLOSE + 2100, true, after).isEmpty());
     }
 
-    @Test public void reconnectPrimesWithoutReplayingThePendingRetest() {
+    @Test public void briefReconnectRecoversRecentPendingRetestOnlyOnce() {
         ZoneEngine.Zone zone = zone(F, 3999, 4001, true, false, T);
         ZoneEngine.Analysis before = snapshot(F, T, List.of(zone), List.of());
         ZoneEngine.Analysis after = snapshot(F, CLOSE, List.of(zone), List.of(),
@@ -46,7 +46,8 @@ public class Release28Test {
         evaluate(CLOSE - 1000, CLOSE - 1000, true, before);
         evaluate(CLOSE - 1000, CLOSE + 500, true, after);
         assertTrue(evaluate(CLOSE - 1000, CLOSE + 600, false, after).isEmpty());
-        assertTrue(evaluate(CLOSE + 1000, CLOSE + 1100, true, after).isEmpty());
+        assertEquals(1,evaluate(CLOSE + 1000, CLOSE + 1100, true, after).size());
+        assertTrue(evaluate(CLOSE + 2000, CLOSE + 2100, true, after).isEmpty());
     }
 
     @Test public void lateHistoryDoesNotReplayAnOldEventWithContinuousTicks() {
@@ -54,8 +55,9 @@ public class Release28Test {
         ZoneEngine.Analysis before = snapshot(F, T, List.of(zone), List.of());
         ZoneEngine.Analysis after = snapshot(F, CLOSE, List.of(zone), List.of(),
             new ZoneEngine.Event(ZoneEngine.EventKind.BREAK, zone, CLOSE));
-        for(long t = CLOSE - 1000; t < CLOSE + 91_000; t += 20_000) evaluate(t,t,true,before);
-        assertTrue(evaluate(CLOSE + 91_000, CLOSE + 91_000, true, after).isEmpty());
+        long late=CLOSE+HistorySchedule.eventWindow(F)+1;
+        for(long t = CLOSE - 1000; t < late; t += 20_000) evaluate(t,t,true,before);
+        assertTrue(evaluate(late,late,true,after).isEmpty());
     }
 
     @Test public void awaitingFiveMinuteQuoteDoesNotResetAnotherTimeframe() {

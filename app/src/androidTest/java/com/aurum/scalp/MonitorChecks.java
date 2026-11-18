@@ -46,6 +46,13 @@ final class MonitorChecks {
         }
         return null;
     }
+    private static void cancelAlerts(Context context){
+        NotificationManager manager=context.getSystemService(NotificationManager.class);
+        for(StatusBarNotification alert:manager.getActiveNotifications()){
+            if(alert.getId()==MonitorNotifications.ALERT_ID||alert.getId()==MonitorNotifications.SUMMARY_ID)
+                manager.cancel(alert.getTag(),alert.getId());
+        }
+    }
     static int run(Instrumentation i)throws Exception{
         Context c=i.getTargetContext();AtomicReference<MonitorRuntime> ref=new AtomicReference<>();AtomicReference<MarketRepository> original=new AtomicReference<>();AtomicInteger quotes=new AtomicInteger(),bid=new AtomicInteger(4000);
         File dir=new File(c.getCacheDir(),"monitor-check-"+System.nanoTime());check(dir.mkdirs(),"Isolated test cache");
@@ -95,7 +102,11 @@ final class MonitorChecks {
             status.getNotification().actions[0].actionIntent.send();await(()->!ref.get().background()&&!injected.running()&&!hasNotification(c,MonitorNotifications.STATUS_ID),"Stop notification action stops polling and clears service");checks++;
             check(MonitorNotifications.alertsAllowed(c),"Zone channel is enabled on test device");
             check(MonitorNotifications.alert(c,"TEST · confirmed break","Controlled instrumentation fixture, not live market data",Market.Frame.H1),"Notification accepted");await(()->hasNotification(c,MonitorNotifications.ALERT_ID),"Smart alert notification delivered");checks++;
-            c.getSystemService(NotificationManager.class).cancel(MonitorNotifications.ALERT_ID);
+            check(MonitorNotifications.alert(c,"TEST · retest held","Controlled subsequent event",Market.Frame.H4),"Second notification accepted");
+            await(()->Arrays.stream(c.getSystemService(NotificationManager.class).getActiveNotifications())
+                .filter(alert->alert.getId()==MonitorNotifications.ALERT_ID).count()==2
+                &&hasNotification(c,MonitorNotifications.SUMMARY_ID),"Both recent events and group summary remain visible");checks++;
+            cancelAlerts(c);
             // A notification starts the correct timeframe in the activity.
             Activity activity=i.startActivitySync(new Intent(c,MainActivity.class).setAction(Intent.ACTION_MAIN).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("alert-frame","H4"));
             AtomicReference<Throwable> failure=new AtomicReference<>();
@@ -120,7 +131,7 @@ final class MonitorChecks {
             if(failure.get()!=null)throw new AssertionError(failure.get());checks+=4;
         }finally{
             i.runOnMainSync(()->{c.stopService(new Intent(c,MonitoringService.class));MonitorRuntime r=ref.get();if(r!=null){r.detach(viewer);r.background(false);injected.stop();r.repository=original.get();r.refreshState();}});
-            c.getSystemService(NotificationManager.class).cancel(MonitorNotifications.ALERT_ID);
+            cancelAlerts(c);
         }
         return checks;
     }

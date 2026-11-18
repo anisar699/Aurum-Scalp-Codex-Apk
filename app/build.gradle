@@ -6,10 +6,11 @@ android {
         applicationId 'com.aurum.scalp'
         minSdk 26
         targetSdk 35
-        versionCode 28
-        versionName '2.8.0'
+        versionCode 29
+        versionName '2.9.0'
         testInstrumentationRunner 'com.aurum.scalp.FeedChecks'
     }
+    buildFeatures { buildConfig true }
     buildTypes { release { minifyEnabled false; debuggable false } }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     lint { abortOnError true }

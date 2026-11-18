@@ -98,30 +98,41 @@ public class AuditRegressionTest {
         Market.Quote q=new Market.Quote(T,4000,4000.5);
         assertEquals("● LIVE",Market.quoteState(q,true,T+6000));assertEquals("● DELAYED",Market.quoteState(q,true,T+31_000));assertEquals("● STALE",Market.quoteState(q,true,T+91_000));assertEquals("● SAVED",Market.quoteState(q,false,T+6000));assertEquals("CONNECTING",Market.quoteState(null,false,T));
     }
-    @Test public void sundayShortSessionIsKeptInsteadOfFridayOnMonday(){
-        Map<Market.Frame,List<Market.Candle>> data=new EnumMap<>(Market.Frame.class);long fri=Instant.parse("2026-11-06T10:00:00Z").toEpochMilli(),sun=Instant.parse("2026-11-08T23:00:00Z").toEpochMilli();
-        List<Market.Candle> b=new ArrayList<>();for(int i=0;i<100;i++)b.add(candle(fri+i*F.duration(),4000));for(int i=0;i<12;i++)b.add(candle(sun+i*F.duration(),4100));data.put(F,b);
-        Market.PriorSession prior=Market.priorSession(data,T+10*60*Market.MINUTE);assertEquals(sun/86_400_000L,prior.day);assertEquals(12,prior.bars);assertEquals(4101,prior.high,0);
+    @Test public void sundayReopeningBelongsToMondayAndPriorIsFriday(){
+        for(String[] date:new String[][]{
+            {"2026-11-06T17:00:00Z","2026-11-08T23:00:00Z","2026-11-09T10:00:00Z"},
+            {"2026-07-10T16:00:00Z","2026-07-12T22:00:00Z","2026-07-13T10:00:00Z"}}){
+            long friday=Instant.parse(date[0]).toEpochMilli(),sunday=Instant.parse(date[1]).toEpochMilli(),monday=Instant.parse(date[2]).toEpochMilli();
+            List<Market.Candle> bars=new ArrayList<>();
+            for(int i=0;i<4;i++)bars.add(candle(friday+i*Market.Frame.H1.duration(),4000));
+            for(int i=0;i<6;i++)bars.add(candle(sunday+i*Market.Frame.H1.duration(),4100));
+            Market.PriorSession prior=Market.priorSession(Map.of(Market.Frame.H1,bars),monday);
+            assertEquals(Market.tradingDay(friday),prior.day);
+            assertEquals(4,prior.bars);
+            assertEquals(4001,prior.high,0);
+            assertEquals(Market.tradingDay(monday),Market.tradingDay(sunday));
+        }
     }
-    @Test public void priorSessionFallsBackToHourlyWhenFiveMinuteHistoryIsMissing(){
-        Map<Market.Frame,List<Market.Candle>> data=new EnumMap<>(Market.Frame.class);long sun=Instant.parse("2026-11-08T23:00:00Z").toEpochMilli();data.put(Market.Frame.H1,Collections.singletonList(candle(sun,4100)));
-        Market.PriorSession prior=Market.priorSession(data,T+60*Market.MINUTE);assertNotNull(prior);assertEquals(Market.Frame.H1,prior.frame);assertEquals(sun/86_400_000L,prior.day);
+    @Test public void priorSessionChoosesWiderCoverageAndSkipsTinySessions(){
+        long friday=Instant.parse("2026-11-06T12:00:00Z").toEpochMilli(),now=Instant.parse("2026-11-09T10:00:00Z").toEpochMilli();
+        List<Market.Candle> hourly=new ArrayList<>(),five=new ArrayList<>();
+        for(int i=0;i<5;i++)hourly.add(candle(friday+i*Market.Frame.H1.duration(),4010));
+        for(int i=0;i<48;i++)five.add(candle(friday+i*F.duration(),4000));
+        assertNull(Market.priorSession(Map.of(F,List.of(five.get(0))),now));
+        assertEquals(Market.Frame.H1,Market.priorSession(Map.of(F,five,Market.Frame.H1,hourly),now).frame);
     }
-    @Test public void priorSessionUsesNewestDateAcrossLoadedFrames(){
-        Map<Market.Frame,List<Market.Candle>> data=new EnumMap<>(Market.Frame.class);data.put(F,Collections.singletonList(candle(Instant.parse("2026-11-06T10:00:00Z").toEpochMilli(),4000)));data.put(Market.Frame.H1,Collections.singletonList(candle(T-60*Market.MINUTE,4100)));
-        assertEquals(Market.Frame.H1,Market.priorSession(data,T+60*Market.MINUTE).frame);
-    }
-    @Test public void priorSessionChoosesWiderObservedCoverageAndHandlesEmptyData(){
-        assertNull(Market.priorSession(Collections.emptyMap(),T));Map<Market.Frame,List<Market.Candle>> data=new EnumMap<>(Market.Frame.class);
-        data.put(F,Collections.singletonList(candle(T-60*Market.MINUTE,4000)));data.put(Market.Frame.H1,Collections.singletonList(candle(T-60*Market.MINUTE,4100)));
-        assertEquals(Market.Frame.H1,Market.priorSession(data,T+60*Market.MINUTE).frame);
-    }
-    @Test public void manualRefreshClearsOnlyOrdinaryBackoff(){
-        RetryGate ordinary=new RetryGate();ordinary.failure(T,30_000,false);assertFalse(ordinary.eligible(T+1000));ordinary.manualRefresh();assertTrue(ordinary.eligible(T+1000));
-        RetryGate rate=new RetryGate();rate.failure(T,60_000,true);rate.manualRefresh();assertFalse(rate.eligible(T+59_999));assertTrue(rate.eligible(T+60_000));
+    @Test public void manualRefreshPreservesProviderHoldsAndItsMinimumSpacing(){
+        PollPolicy policy=new PollPolicy();
+        assertTrue(policy.claim("quote",T,false));
+        policy.complete("quote",T,30_000,false);
+        assertFalse(policy.claim("quote",T+9_999,true));
+        assertTrue(policy.claim("quote",T+10_000,true));
+        policy.complete("quote",T+10_000,60_000,true);
+        assertFalse(policy.claim("H1",T+69_999,true));
+        assertTrue(policy.claim("H1",T+70_000,true));
     }
     @Test public void retryAfterSupportsSecondsDatesAndSafeFallback(){
         assertEquals(120_000,RetryGate.retryAfter("120",T));assertEquals(120_000,RetryGate.retryAfter("Mon, 9 Nov 2026 00:02:00 GMT",T));assertEquals(60_000,RetryGate.retryAfter("invalid",T));assertEquals(60_000,RetryGate.retryAfter(null,T));
-        RetryGate gate=new RetryGate();gate.failure(T,120_000,true);gate.success();assertTrue(gate.eligible(T));
+        assertEquals(2_000,RetryGate.retryAfter("2",T));
     }
 }

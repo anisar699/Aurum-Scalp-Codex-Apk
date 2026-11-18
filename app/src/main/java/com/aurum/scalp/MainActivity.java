@@ -47,13 +47,19 @@ public final class MainActivity extends Activity {
         runtime=MonitorRuntime.get(this);repo=runtime.repository;readIntent(getIntent());
         root=column();root.setBackgroundColor(BG);setContentView(root);
         root.setOnApplyWindowInsetsListener((v,insets)->applyInsets(v,insets));
-        LinearLayout header=row();header.setPadding(dp(18),dp(10),dp(18),dp(10));LinearLayout brand=column();brand.addView(label("A U R U M",19,GOLD,true));gap(brand,3);brand.addView(label("SCALP  /  PRICE STRUCTURE  ·  2.8",9,MUTED,false));header.addView(brand,new LinearLayout.LayoutParams(0,-2,1));
-        refresh=button("Refresh",false);refresh.setContentDescription("Refresh market data");refresh.setOnClickListener(v->repo.refresh());header.addView(refresh,new LinearLayout.LayoutParams(-2,-2));root.addView(header);root.addView(line(),new LinearLayout.LayoutParams(-1,dp(1)));
+        LinearLayout header=row();header.setPadding(dp(18),dp(10),dp(18),dp(10));LinearLayout brand=column();brand.addView(label("A U R U M",19,GOLD,true));gap(brand,3);brand.addView(label("SCALP  /  PRICE STRUCTURE  ·  "+BuildConfig.VERSION_NAME,9,MUTED,false));header.addView(brand,new LinearLayout.LayoutParams(0,-2,1));
+        refresh=button("Refresh",false);refresh.setContentDescription("Refresh market data");refresh.setOnClickListener(v->repo.refresh(page==3||page==4?null:frame));header.addView(refresh,new LinearLayout.LayoutParams(-2,-2));root.addView(header);root.addView(line(),new LinearLayout.LayoutParams(-1,dp(1)));
         scroll=new ScrollView(this);scroll.setFillViewport(true);body=column();body.setPadding(dp(18),dp(16),dp(18),dp(22));scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         nav=row();nav.setPadding(dp(10),dp(7),dp(10),dp(7));root.addView(line(),new LinearLayout.LayoutParams(-1,dp(1)));root.addView(nav);
         render();
     }
-    @Override protected void onStart(){super.onStart();resumed=true;runtime.attach(repositoryListener);repo=runtime.repository;runtime.refreshState();handler.post(clock);}
+    @Override protected void onStart(){super.onStart();resumed=true;runtime.attach(repositoryListener,visibleFrames());repo=runtime.repository;runtime.refreshState();handler.post(clock);}
+    @Override protected void onResume(){super.onResume();runtime.refreshPermissions();runtime.refreshState();}
+    private Set<Market.Frame> visibleFrames(){
+        if(page==2||page==4)return EnumSet.allOf(Market.Frame.class);
+        if(page==6)return EnumSet.of(Market.Frame.M5,Market.Frame.M15,Market.Frame.H1,Market.Frame.H4);
+        return EnumSet.of(frame,Market.Frame.H1,Market.Frame.H4);
+    }
     @Override protected void onStop(){resumed=false;handler.removeCallbacks(clock);runtime.detach(repositoryListener);super.onStop();}
     @Override protected void onSaveInstanceState(Bundle state){state.putString("frame",frame.name());state.putInt("page",page);super.onSaveInstanceState(state);}
     @SuppressWarnings("deprecation")
@@ -85,7 +91,7 @@ public final class MainActivity extends Activity {
         }else liveUpdate();
     }
     private void render(){
-        if(body==null)return;int y=scroll.getScrollY();body.removeAllViews();nearPanel=zonePanel=null;bidView=askView=liveView=tickView=banner=insightView=sourceView=null;quoteBindings.clear();pageBindings.clear();zoneSignature=null;
+        if(body==null)return;runtime.viewFrames(repositoryListener,visibleFrames());int y=scroll.getScrollY();body.removeAllViews();nearPanel=zonePanel=null;bidView=askView=liveView=tickView=banner=insightView=sourceView=null;quoteBindings.clear();pageBindings.clear();zoneSignature=null;
         renderNav();updateBackHandler();
         if(page==3){method();}else if(page==4){health();}else if(page==6){quoteCard();space(12);scalpView();}else{
             quoteCard();space(12);frameButtons();space(14);
@@ -362,7 +368,7 @@ public final class MainActivity extends Activity {
     }
     private String pinAvailability(ZoneSelection.Pin pin){
         ZoneEngine.Analysis a=repo.analyses.get(pin.frame());
-        return a!=null&&(a.zones.stream().anyMatch(pin::matches)||a.watchZones.stream().anyMatch(pin::matches))?"":" · zone unavailable";
+        return a!=null&&(ZoneSelection.resolve(pin,a)!=null)?"":" · zone unavailable";
     }
     private void analyst(){
         ZoneEngine.Analysis a=analysis();heading("Market structure readout","Rules and observed reactions · no win-rate claims");
@@ -381,11 +387,11 @@ public final class MainActivity extends Activity {
     private TextView bound(java.util.function.Supplier<String> value,int size,int color){TextView view=label(value.get(),size,color,false);pageBindings.add(()->set(view,value.get()));return view;}
     private void priorDay(){LinearLayout c=card(14);c.addView(bound(()->{
         Market.PriorSession p=Market.priorSession(repo.candles,repo.marketNow());if(p==null)return "Prior session unavailable until trusted server time and history load.";
-        return "PRIOR AVAILABLE UTC SESSION · "+TIME.format(Instant.ofEpochMilli(p.day*86400000L))+"\nHigh "+money(p.high)+" / Low "+money(p.low)+"\n"+p.bars+" observed "+p.frame.label+" bars; coverage may be partial.";
+        return "PRIOR TRADING DAY · NY 17:00 ROLLOVER\n"+java.time.LocalDate.ofEpochDay(p.day)+"\nHigh "+money(p.high)+" / Low "+money(p.low)+"\n"+p.bars+" observed "+p.frame.label+" bars; coverage may be partial.";
     },12,MUTED));body.addView(c);}
     private void method(){
         Button back=button("← Back to Analysis",false);back.setOnClickListener(v->backToAnalysis());body.addView(back,new LinearLayout.LayoutParams(-2,controlHeight(44)));space(12);
-        heading("Method & data health","Aurum Scalp 2.8 · XAU/USD MID prices");
+        heading("Method & data health","Aurum Scalp "+BuildConfig.VERSION_NAME+" · XAU/USD MID prices");
         body.addView(label("Market data by biquote. Live XAUUSD uses a SignalR stream with REST snapshot fallback; no login or key is required. Analysis uses MID-price candles. Bid and ask remain visible for comparison with your broker.",12,GOLD,false));space(14);
         methodCard("01  /  Match the trading horizon","Default 1m execution levels use actual minute candles. 5m and 15m describe intraday context; 1H and 4H provide broader structure. A higher-timeframe zone should not be treated as a precise scalp entry.");
         methodCard("02  /  Confirm swings without unfinished bars","All OHLC data is validated, sorted and filtered to completed UTC bars. 1m, 5m, 15m and 4H swings require 2 closed candles on both sides; 1H requires 3. A rejection must move at least 0.25 of its local ATR. Confirmation waits for those later candles to close; elapsed time varies with session closures. Biquote bars must use the configured UTC bucket alignment. Known provider overnight/weekend closures are allowed between adjacent macro trading bars; unexpected data holes remain disallowed.");
@@ -393,12 +399,12 @@ public final class MainActivity extends Activity {
         methodCard("04  /  Confirm breaks and retests in time order","Every closed bar is replayed chronologically. Two consecutive closes beyond a band's edge and buffer invalidate the active role. The zone can become active again only after a newly confirmed pivot in the holding role. Old reaction counts reset after a break. Pending areas appear separately as Retest watch, without a strength score.");
         methodCard("05  /  Count independent evidence","A repeated test needs a later confirmed pivot, separation of at least wing + 1 bars, and a move away from the area. Fresh swing = 1; Retested = 2; Repeated = 3 or more reactions in the current role. Overlapping same-role bands add timeframe labels, without multiplying scores. No accuracy percentage is assigned.");
         methodCard("06  /  Keep gaps honest","Nearby lists are limited to 10 ATR on intraday frames, 18 ATR on 1H and 24 ATR on 4H. Real confirmed bands and broken-zone retest watches are ordered by distance; the latter are always marked unconfirmed. Recent range extremes appear as Unconfirmed only when no nearby area exists and they are actually on the relevant side of price. No psychological price grid or evenly spaced fake supports are generated. Real gaps can remain during strong one-way moves.");
-        methodCard("07  /  biquote prices and candle closure","Live XAUUSD ticks arrive through the biquote SignalR stream; REST snapshots retry at 15s when the stream has no fresh quote (60s for a closed market). History polls target 30s / 60s / 60s / 180s / 180s; after a closed-market response, history waits 10 minutes. Provider backoff always wins. Candles must have isOpen=false, valid OHLC, UTC interval alignment and a nominal interval end no later than trusted server time. Open-marked Friday bars stay excluded even on Saturday. No session-close time or missing OHLC is invented.");
+        methodCard("07  /  biquote prices and candle closure","Live XAUUSD ticks arrive through the biquote SignalR stream; REST snapshots retry at 15s when the stream has no fresh quote (60s for a closed market). History follows UTC candle closes using incremental tails, with hourly full corrections. Provider backoff always wins. Candles must have isOpen=false, valid OHLC, UTC interval alignment and a nominal interval end no later than trusted server time. Open-marked Friday bars stay excluded even on Saturday. No session-close time or missing OHLC is invented.");
         methodCard("08  /  Quote state and storage","Market closed uses the provider state. Live means a successfully received tick at most 30s old; Delayed 30–90s; Stale beyond 90s. Saved means no successful quote connection in the current repository session (shared with background monitoring). Atomic private caching preserves real prior data offline. Obsolete requests from a previous app session cannot overwrite the current one. No random prices, fixed target calibration, custom certificates or demo market history are shipped.");
         methodCard("09  /  Smart alerts","Choose frames in Health (1H and 4H by default). Approach: MID enters within max($0.10, 0.15 ATR) of an active band after moving more than 0.60 ATR away. It rearms only after another departure, with a 10-minute zone cooldown and 2-minute frame cooldown. Approaches do not confirm a reaction. Break: two closed candles beyond the seed-ATR buffer. Retest held: newly confirmed pivot in the new role. Retest failed: two closed candles reclaim the pending band. Each frame confirms its own events. Notifications require trusted server time, a live matching-feed quote and freshly fetched candle history; initial/reconnected snapshots prime the state silently. Android notification settings control sound.");
         methodCard("10  /  Trend, range and volatility","Readout uses at least 80 closed candles. Up/down trend: ADX(14) >= 25, EMA20 on the corresponding side of EMA50, and EMA20 movement over 4 bars >= 0.10 ATR in that direction. Range: ADX < 20 and 20-bar efficiency < 0.35; otherwise transition/mixed. Volatility compares ATR(14) to the median of up to 100 preceding ATR values: below 0.75x low, above 1.50x high. The observed last-20-bar range is context, not a new S/R zone or forecast. These rules have no claimed predictive win rate.");
         for(Market.Frame f:Market.Frame.values()){body.addView(bound(()->frameSummary(f),12,MUTED));space(12);}
-        body.addView(label("biquote aggregates third-party data, including MT5 Broker 1 ticks and historical feeds that can have different upstream origins. Recent sampled candles matched MID aggregation; all levels and distances here use MID. Provider history can be short: at least 80 closed candles are required and limited depth is labelled. Local biquote-only caching accumulates later confirmed bars. The free service has no uptime or delay SLA. Exness prices, spreads and sessions can differ. Historical reactions are not a trading accuracy guarantee.",12,MUTED,false));space(16);
+        body.addView(label("biquote aggregates third-party data, including MT5 Broker 1 ticks and historical feeds that can have different upstream origins. Recent sampled candles matched MID aggregation; all levels and distances here use MID. Support and resistance needs 40 closed candles, trend metrics need 80, and EMA200 needs 200. Limited depth is labelled. Local biquote-only caching accumulates later confirmed bars. The free service has no uptime or delay SLA. Exness prices, spreads and sessions can differ. Historical reactions are not a trading accuracy guarantee.",12,MUTED,false));space(16);
         Button docs=button("biquote documentation & terms",false);docs.setOnClickListener(v->startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://biquote.io/terms.html"))));body.addView(docs,new LinearLayout.LayoutParams(-1,-2));space(12);
         body.addView(label("Privacy: no account, advertisements, analytics or order execution. Internet, foreground data-sync service and notification permissions only. Requests go to the market-data provider using Android HTTPS validation. Background polling runs only after you tap Start monitoring. Stop it from Health or the ongoing notification. Android power restrictions and data-sync time limits can pause or stop it; force-stopping the app stops monitoring. It does not automatically start at boot.",11,MUTED,false));
     }
@@ -414,7 +420,7 @@ public final class MainActivity extends Activity {
     }
     private void loading(){LinearLayout c=card(18);c.addView(label("Loading "+frame.label+" candle history…",18,TEXT,true));gap(c,10);c.addView(label("Real closed candles are needed before marking zones. Cached data stays available if the connection fails. Tap Refresh to retry.",13,MUTED,false));body.addView(c);}
     private void share(){
-        ZoneEngine.Analysis a=analysis();if(a==null)return;StringBuilder s=new StringBuilder("Aurum Scalp 2.8 · XAU/USD · "+frame.label+"\n");s.append("Reference ").append(money(price()));if(repo.quote!=null)s.append(" · ").append(EXACT.format(Instant.ofEpochMilli(Market.referenceTime(repo.quote,repo.analyses.values()))));s.append('\n');
+        ZoneEngine.Analysis a=analysis();if(a==null)return;StringBuilder s=new StringBuilder("Aurum Scalp "+BuildConfig.VERSION_NAME+" · XAU/USD · "+frame.label+"\n");s.append("Reference ").append(money(price()));if(repo.quote!=null)s.append(" · ").append(EXACT.format(Instant.ofEpochMilli(Market.referenceTime(repo.quote,repo.analyses.values()))));s.append('\n');
         for(boolean support:new boolean[]{true,false})for(ZoneEngine.Zone z:a.nearest(price(),support,3,true))s.append(support?"Support ":"Resistance ").append(money(z.low)).append("–").append(money(z.high)).append(" · ").append(z.evidence()).append(" · width $").append(money(z.width())).append('\n');s.append("Historical MID reactions, not guaranteed forecasts. Market data by biquote; check Method & data health.");Intent intent=new Intent(Intent.ACTION_SEND);intent.setType("text/plain");intent.putExtra(Intent.EXTRA_TEXT,s.toString());startActivity(Intent.createChooser(intent,"Share XAU/USD zones"));
     }
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);readIntent(intent);scroll.scrollTo(0,0);render();}
@@ -437,11 +443,12 @@ public final class MainActivity extends Activity {
         heading("Data health & monitoring","One feed · visible freshness · user-controlled alerts");
         LinearLayout status=card(15);status.addView(label("MONITORING",12,GOLD,true));gap(status,8);
         status.addView(bound(()->runtime.background()?"Background monitoring is running":"Background monitoring is off",15,TEXT));gap(status,6);
-        status.addView(bound(()->runtime.settings.getString("stop-reason","")+"\n"+runtime.alertState(),12,MUTED));gap(status,12);
+        status.addView(bound(()->MonitoringWatch.reason(runtime)+"\n"+runtime.alertState(),12,MUTED));gap(status,12);
         monitorButton=button("Start background monitoring",true);
         pageBindings.add(()->set(monitorButton,runtime.background()?"Stop background monitoring":"Start background monitoring"));
-        monitorButton.setOnClickListener(v->{if(runtime.background()){stopService(new Intent(this,MonitoringService.class));}else requestMonitoring();});status.addView(monitorButton,new LinearLayout.LayoutParams(-1,-2));gap(status,8);
-        status.addView(label("An ongoing notification has a Stop button. Android may suspend networking or end data-sync services (Android 15+: 6-hour background budget per 24h). Reopen to check status or restart. Monitoring does not restart automatically after force-stop, reboot or process termination.",11,MUTED,false));body.addView(status);space(14);
+        monitorButton.setOnClickListener(v->{if(runtime.background()){startService(new Intent(this,MonitoringService.class).setAction(MonitoringService.STOP));}else requestMonitoring();});status.addView(monitorButton,new LinearLayout.LayoutParams(-1,-2));gap(status,8);
+        Button battery=button("Android battery settings",false);battery.setOnClickListener(v->startActivity(new Intent(android.provider.Settings.ACTION_BATTERY_SAVER_SETTINGS)));status.addView(battery);gap(status,8);
+        status.addView(label("The shade includes a Stop button. Android may suspend networking or end data-sync services (Android 15+: 6 hours per 24 hours). Aurum reports a detected stop. Restart from Health.",11,MUTED,false));body.addView(status);space(14);
 
         LinearLayout controls=card(15);controls.addView(label("SMART ZONE ALERTS",12,GOLD,true));gap(controls,8);
         Switch enabled=new Switch(this);enabled.setText(R.string.smart_zone_notifications);enabled.setTextColor(TEXT);enabled.setTextSize(14);enabled.setMinHeight(controlHeight(48));enabled.setChecked(runtime.alertsEnabled());enabled.setOnCheckedChangeListener((v,checked)->{runtime.alertsEnabled(checked);if(checked&&!MonitorNotifications.permission(this))requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},231);});controls.addView(enabled,new LinearLayout.LayoutParams(-1,-2));gap(controls,6);
@@ -458,14 +465,14 @@ public final class MainActivity extends Activity {
             return states.isEmpty()?"No alert frames selected":String.join("\n",states);
         },11,MUTED));gap(controls,8);
         Button pins=button("Manage pinned alerts",false);pins.setOnClickListener(v->managePins());controls.addView(pins);gap(controls,8);
-        controls.addView(bound(()->"Android notifications: "+(MonitorNotifications.alertsAllowed(this)?"allowed":"blocked / permission needed"),12,GOLD));gap(controls,10);
+        controls.addView(bound(()->"Android notifications: "+(runtime.notificationsAllowed()?"allowed":"blocked / permission needed"),12,GOLD));gap(controls,10);
         if(Build.VERSION.SDK_INT>=33){Button grant=button("Grant notification permission",false);grant.setOnClickListener(v->requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},231));controls.addView(grant,new LinearLayout.LayoutParams(-1,-2));gap(controls,8);}
         Button permission=button("Open Android notification settings",false);permission.setOnClickListener(v->startActivity(new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,getPackageName())));controls.addView(permission,new LinearLayout.LayoutParams(-1,-2));gap(controls,10);
-        controls.addView(label("Approach · confirmed break · retest held · retest failed. Fresh MID quote and verified history required. First snapshots and reconnects prime silently; approach alerts need departure/re-entry and cooldown. Alerts describe observations, not buy/sell orders.",11,MUTED,false));gap(controls,9);controls.addView(bound(()->"Last notification: "+runtime.lastAlert(),11,MUTED));body.addView(controls);space(14);
+        controls.addView(label("Approach · confirmed break · retest held · retest failed. Fresh MID quote and verified history required. First snapshots prime silently; recent confirmations can resume after a brief outage; approach alerts need departure/re-entry and cooldown. Alerts describe observations, not buy/sell orders.",11,MUTED,false));gap(controls,9);controls.addView(bound(()->"Last notification: "+runtime.lastAlert(),11,MUTED));body.addView(controls);space(14);
 
         LinearLayout feed=card(15);feed.addView(label("FEED / CLOCK / REQUEST HEALTH",12,GOLD,true));gap(feed,9);
-        feed.addView(bound(()->repo.sourceName()+"\nTrusted server clock: "+(repo.timeTrusted()?EXACT.format(Instant.ofEpochMilli(repo.marketNow())):"unavailable; live alerts paused")+"\nQuote state: "+Market.quoteState(repo.quote,repo.quoteOnline,repo.marketNow())+"\n"+quoteHealth()+"\nStream: "+repo.streamStatus+" · "+repo.streamTicks+" valid tick messages\nProvider-wide backoff: "+(repo.backoffRemaining()>0?age(repo.backoffRemaining())+" remaining":"none")+"\nRequests since repository start: "+repo.attempts()+" · successful payloads: "+repo.successes()+"\nIn-flight requests: "+(repo.loading()?"yes":"none")+"\n"+(repo.quoteError.isEmpty()?"Last tick fetch: no recorded error":repo.quoteError),12,MUTED));gap(feed,10);
-        feed.addView(label("Counts are local HTTP attempts, not provider quota credits. Stream is primary; snapshot fallback targets 15s (60s when closed); candle polls 30s / 60s / 60s / 180s / 180s. Closed-market history waits 10 minutes. Request duration and provider backoff add delay. A blocked or closed-market feed cannot produce live alerts.",11,MUTED,false));body.addView(feed);space(14);
+        feed.addView(bound(()->repo.sourceName()+"\nTrusted server clock: "+(repo.timeTrusted()?EXACT.format(Instant.ofEpochMilli(repo.marketNow())):"unavailable; live alerts paused")+"\nQuote state: "+Market.quoteState(repo.quote,repo.quoteOnline,repo.marketNow())+"\n"+quoteHealth()+"\nStream: "+repo.streamStatus+" · "+repo.streamTicks+" valid tick messages · "+repo.streamSubscriptions+" subscriptions\n"+repo.feedHolds()+"\nRequests since repository start: "+repo.attempts()+" · successful payloads: "+repo.successes()+"\nIn-flight requests: "+(repo.loading()?"yes":"none")+"\n"+(repo.quoteError.isEmpty()?"Last tick fetch: no recorded error":repo.quoteError),12,MUTED));gap(feed,10);
+        feed.addView(label("Counts are local HTTP attempts, not provider quota credits. Stream is primary; snapshot fallback targets 15s (60s when closed); history follows candle closes for displayed, monitored and pinned frames. Small tails are merged into the cache between hourly history scans. Request duration and provider backoff add delay. A blocked or closed-market feed cannot produce live alerts.",11,MUTED,false));body.addView(feed);space(14);
         for(Market.Frame f:Market.Frame.values()){
             LinearLayout c=card(14);c.addView(label(f.label+" CANDLE HEALTH",12,GOLD,true));gap(c,8);c.addView(bound(()->candleHealth(f),12,MUTED));body.addView(c);space(10);
         }
@@ -473,7 +480,7 @@ public final class MainActivity extends Activity {
     }
     private String quoteHealth(){
         if(repo.quote==null)return "No quote received";long now=repo.marketNow();
-        return "Tick time: "+EXACT.format(Instant.ofEpochMilli(repo.quote.time))+"\nQuote age: "+(now<=0||repo.quote.time>now+1000?"unverified":age(Math.max(0,now-repo.quote.time)))+" · spread $"+money(repo.quote.spread());
+        return "Tick time: "+EXACT.format(Instant.ofEpochMilli(repo.quote.time))+"\nQuote age: "+(now<=0||repo.quote.time>now+MarketClock.FUTURE_TOLERANCE?"unverified":age(Math.max(0,now-repo.quote.time)))+" · spread $"+money(repo.quote.spread());
     }
     private String candleHealth(Market.Frame f){
         ZoneEngine.Analysis a=repo.analyses.get(f);long sync=repo.synced.getOrDefault(f,0L);String error=repo.errors.get(f);
@@ -488,9 +495,9 @@ public final class MainActivity extends Activity {
             s+="\nInterval gaps in up to 48 recent steps: "+gaps+" (can include market closures)";
         }
         Integer depth=repo.providerDepth.get(f);
-        s+="\nProvider returned: "+(depth==null?"not verified this session":depth+" closed bars of "+MarketRepository.historyLimit(f)+" requested");
+        s+="\nProvider returned: "+(depth==null?"not verified this session":depth+" closed bars of "+repo.requestedDepth.getOrDefault(f,MarketRepository.historyLimit(f))+" requested");
         s+="\nLast successful fetch: "+(sync>0?EXACT.format(Instant.ofEpochMilli(sync)):"none");
-        s+="\nVerified in current connection: "+(repo.liveSynced.containsKey(f)?"yes":"no");if(error!=null)s+="\nFetch error: "+error;return s;
+        s+="\nVerified since app process start: "+(repo.liveSynced.containsKey(f)?"yes":"no");if(error!=null)s+="\nFetch error: "+error;return s;
     }
     private final Map<Market.Frame,ZoneEngine.Analysis> gapSources=new EnumMap<>(Market.Frame.class);
     private final Map<Market.Frame,Integer> gaps=new EnumMap<>(Market.Frame.class);
@@ -505,7 +512,7 @@ public final class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){
         super.onRequestPermissionsResult(request,permissions,grants);
         if(request==230){boolean start=startAfterPermission;startAfterPermission=false;if(start&&MonitorNotifications.permission(this)&&resumed)requestMonitoring();else Toast.makeText(this,"Allow notifications to start visible background monitoring",Toast.LENGTH_LONG).show();}
-        runtime.settingsChanged();liveUpdate();
+        if(request==230||request==231){runtime.refreshPermissions();runtime.refreshState();}
     }
     private void heading(String title,String sub){body.addView(label(title,20,TEXT,true));space(5);body.addView(label(sub,11,MUTED,false));space(14);}
     private void space(int n){gap(body,n);}
@@ -521,6 +528,6 @@ public final class MainActivity extends Activity {
     private int controlHeight(int n){return dp(n*Math.max(1f,getResources().getConfiguration().fontScale));}
     private int dp(float n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private static void set(TextView t,String s){if(t!=null&&!s.contentEquals(t.getText()))t.setText(s);}
-    static String money(double p){return String.format(Locale.US,"%,.2f",p);}
+    static String money(double p){return PriceFormat.display(p);}
     static String age(long ms){long s=ms/1000;if(s<60)return s+"s";if(s<3600)return s/60+"m";if(s<86400)return s/3600+"h";return s/86400+"d";}
 }

@@ -15,7 +15,7 @@ public final class MarketRegime {
     }
     public static Readout calculate(ZoneEngine.Analysis a){
         if(a==null||a.candles.size()<80||a.atr<=0)return new Readout(false,"Need 80 closed candles","Unavailable",0,0,0,0,0,0,0);
-        List<Market.Candle> b=a.candles;int n=b.size();double[] tr=ZoneEngine.atrSeries(b);
+        List<Market.Candle> b=a.candles;int n=b.size();double[] tr=ZoneEngine.atrSeries(b,a.frame.duration());
         double[] baseline=Arrays.copyOfRange(tr,Math.max(14,n-101),n-1);Arrays.sort(baseline);
         double median=baseline[baseline.length/2],ratio=a.atr/Math.max(.00001,median);
         double adx=adx(b),travel=0;for(int i=n-20;i<n;i++)travel+=Math.abs(b.get(i).close-b.get(i-1).close);

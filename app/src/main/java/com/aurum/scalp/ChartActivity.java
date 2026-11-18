@@ -21,7 +21,7 @@ public final class ChartActivity extends Activity {
         LinearLayout heading=column();TextView name=text("AURUM / CHART",13,MainActivity.GOLD);name.setTypeface(null,Typeface.BOLD);heading.addView(name);state=text("Connecting",10,MainActivity.MUTED);heading.addView(state);LinearLayout.LayoutParams hlp=new LinearLayout.LayoutParams(0,-2,1);hlp.setMargins(dp(10),0,dp(8),0);title.addView(heading,hlp);
         Button expand=button("Expand",false);expand.setContentDescription("Enter fullscreen chart");expand.setOnClickListener(v->fullscreen(true));title.addView(expand);chrome.addView(title);
         HorizontalScrollView frames=new HorizontalScrollView(this);frames.setHorizontalScrollBarEnabled(false);LinearLayout chips=row();
-        for(Market.Frame f:Market.Frame.values()){Button b=button(f.label,f==frame);b.setContentDescription("Chart timeframe "+f.label);b.setTag(f);b.setOnClickListener(v->{frame=f;prefs().edit().putString("frame",frame.name()).apply();for(int i=0;i<chips.getChildCount();i++){Button item=(Button)chips.getChildAt(i);style(item,item.getTag()==frame);}update();});LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(62),-2);lp.setMargins(0,dp(5),dp(6),0);chips.addView(b,lp);}frames.addView(chips);chrome.addView(frames);
+        for(Market.Frame f:Market.Frame.values()){Button b=button(f.label,f==frame);b.setContentDescription("Chart timeframe "+f.label);b.setTag(f);b.setOnClickListener(v->{frame=f;runtime.viewFrames(listener,chartFrames());prefs().edit().putString("frame",frame.name()).apply();for(int i=0;i<chips.getChildCount();i++){Button item=(Button)chips.getChildAt(i);style(item,item.getTag()==frame);}update();});LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(62),-2);lp.setMargins(0,dp(5),dp(6),0);chips.addView(b,lp);}frames.addView(chips);chrome.addView(frames);
         LinearLayout controls=row();
         Button layers=button("Layers",false);layers.setContentDescription("Chart layers");layers.setOnClickListener(v->showLayers());
         Button focus=button("Focus price",true);focus.setContentDescription("Focus price on recent candles");focus.setOnClickListener(v->chart.focusPrice());
@@ -41,7 +41,7 @@ public final class ChartActivity extends Activity {
         for(int i=0;i<selected.length;i++)selected[i]=prefs().getBoolean(LAYER_KEYS[i],i!=2);
         layerMenu=new AlertDialog.Builder(this).setTitle("Chart layers")
             .setMultiChoiceItems(LAYER_NAMES,selected,(dialog,which,on)->{prefs().edit().putBoolean(LAYER_KEYS[which],on).apply();update();})
-            .setPositiveButton("Done",null).setNeutralButton("Refresh data",(dialog,which)->runtime.repository.refresh()).show();
+            .setPositiveButton("Done",null).setNeutralButton("Refresh data",(dialog,which)->runtime.repository.refresh(frame)).show();
     }
     private SharedPreferences prefs(){return getSharedPreferences("advanced-chart",MODE_PRIVATE);}
     private void update(){if(chart==null)return;MarketRepository r=runtime.repository;fullLabel.setText(getString(R.string.chart_heading,frame.label));state.setText(getString(R.string.chart_state,frame.label,Market.priceState(r.quote,r.quoteOnline,r.marketNow(),r.analyses.values()).replace("● ","")));chart.data(r,frame,prefs().getBoolean("zones",true),prefs().getBoolean("context",true),prefs().getBoolean("ema",false),prefs().getBoolean("live",true),prefs().getBoolean("near",true));}
@@ -51,9 +51,19 @@ public final class ChartActivity extends Activity {
         else getWindow().getDecorView().setSystemUiVisibility(value?View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY:View.SYSTEM_UI_FLAG_VISIBLE);
         root.requestApplyInsets();
     }
-    @Override protected void onStart(){super.onStart();visible=true;runtime.attach(listener);chart.active(true);update();handler.post(clock);}
+    @Override protected void onStart(){super.onStart();visible=true;runtime.attach(listener,chartFrames());chart.active(true);update();handler.post(clock);}
     @Override protected void onStop(){visible=false;handler.removeCallbacks(clock);chart.active(false);runtime.detach(listener);super.onStop();}
-    @Override protected void onDestroy(){chart.destroy();super.onDestroy();}
+    private java.util.Set<Market.Frame> chartFrames(){
+        return java.util.EnumSet.of(frame,Market.Frame.H1,Market.Frame.H4);
+    }
+    @Override protected void onResume(){super.onResume();runtime.refreshPermissions();}
+    @Override protected void onDestroy(){
+        if(layerMenu!=null)layerMenu.dismiss();
+        stage.removeView(chart);
+        chart.stopLoading();
+        chart.destroy();
+        super.onDestroy();
+    }
     @Override public void onConfigurationChanged(android.content.res.Configuration c){super.onConfigurationChanged(c);root.requestApplyInsets();update();}
     @Override protected void onSaveInstanceState(Bundle b){b.putString("frame",frame.name());b.putBoolean("full",full);super.onSaveInstanceState(b);}
     @SuppressWarnings("deprecation") @Override public void onBackPressed(){if(full)fullscreen(false);else super.onBackPressed();}

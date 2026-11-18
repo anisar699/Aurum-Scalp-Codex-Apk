@@ -14,7 +14,7 @@ final class DataFreshness {
         return a == null || a.candles.isEmpty() ? 0 : Market.closeTime(a.candles.get(a.candles.size() - 1), a.frame.duration());
     }
     static boolean verified(long now, long lastFetch, Market.Frame frame) {
-        return now > 0 && lastFetch > 0 && lastFetch <= now + 1000 && now - lastFetch <= (frame.scalp() ? 180_000 : 600_000);
+        return now > 0 && lastFetch > 0 && lastFetch <= now + MarketClock.FUTURE_TOLERANCE && now - lastFetch <= Math.max(180_000, frame.duration() + HistorySchedule.eventWindow(frame));
     }
     static String state(ZoneEngine.Analysis a, long now, long verifiedFetch, Market.Quote q) {
         long close = lastClose(a);
