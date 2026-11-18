@@ -1,0 +1,21 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.aurum.scalp'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.aurum.scalp'
+        minSdk 26
+        targetSdk 35
+        versionCode 28
+        versionName '2.8.0'
+        testInstrumentationRunner 'com.aurum.scalp.FeedChecks'
+    }
+    buildTypes { release { minifyEnabled false; debuggable false } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    lint { abortOnError true }
+}
+dependencies {
+ implementation files('libs/Java-WebSocket-1.5.7.jar','libs/slf4j-api-2.0.9.jar')
+ testImplementation 'junit:junit:4.13.2'
+ testImplementation 'org.json:json:20240303'
+}

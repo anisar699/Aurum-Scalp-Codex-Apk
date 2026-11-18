@@ -1,0 +1,17 @@
+package com.aurum.scalp;
+import org.junit.Test;import static org.junit.Assert.*;import java.util.*;
+public class FormingBookTest {
+ static final long T=java.time.Instant.parse("2026-11-13T12:00:00Z").toEpochMilli();final FormingBook book=new FormingBook();final Market.Frame f=Market.Frame.M1;
+ Market.Quote q(long t,double p){return new Market.Quote(t,p-.1,p+.1);}
+ List<FormingBook.Bar> at(long t){return book.visible(f,0,t,q(t,4000),true);}
+ @Test public void highAndLowSurvivePriceReversal(){book.tick(q(T+1000,4000),true,T+1000);book.tick(q(T+2000,4010),true,T+2000);book.tick(q(T+3000,3990),true,T+3000);book.tick(q(T+4000,4002),true,T+4000);Market.Candle b=at(T+4000).get(0).candle;assertEquals(4010,b.high,0);assertEquals(3990,b.low,0);assertEquals(4002,b.close,0);assertEquals(4000,b.open,0);assertTrue(at(T+4000).get(0).partial);}
+ @Test public void newMinuteCreatesNewTimestampNeverRewritesOld(){book.tick(q(T+1000,4000),true,T+1000);book.tick(q(T+61000,4020),true,T+61000);List<FormingBook.Bar>b=at(T+61000);assertEquals(2,b.size());assertEquals(T,b.get(0).candle.time);assertEquals(4000,b.get(0).candle.close,0);assertEquals(T+60000,b.get(1).candle.time);assertEquals(4020,b.get(1).candle.open,0);}
+ @Test public void outOfOrderTicksCannotOverwriteLatestClose(){book.tick(q(T+5000,4010),true,T+5000);book.tick(q(T+4000,3990),true,T+5000);assertEquals(4010,at(T+5000).get(0).candle.close,0);}
+ @Test public void distinctTicksInSameSourceSecondAreRetained(){book.tick(q(T+1000,4010),true,T+1000);book.tick(q(T+1000,4002),true,T+1000);assertEquals(4010,at(T+1000).get(0).candle.high,0);assertEquals(4002,at(T+1000).get(0).candle.close,0);}
+ @Test public void providerSeedSetsActualOpenAndKeepsObservedExtreme(){book.tick(q(T+1000,4010),true,T+1000);book.seed(f,new Market.Candle(T,4000,4005,3995,4003,T+60000));FormingBook.Bar b=at(T+2000).get(0);assertFalse(b.partial);assertEquals(4000,b.candle.open,0);assertEquals(4010,b.candle.high,0);assertEquals(3995,b.candle.low,0);assertEquals(4010,b.candle.close,0);}
+ @Test public void confirmedHistoryReplacesUnconfirmedPreview(){book.tick(q(T+1000,4010),true,T+1000);List<Market.Candle> closed=Collections.singletonList(new Market.Candle(T,4000,4005,3995,4003,T+60000));book.confirm(f,closed);assertTrue(at(T+60000).isEmpty());assertEquals(4005,closed.get(0).high,0);assertEquals(4003,closed.get(0).close,0);}
+ @Test public void closedStaleFutureSavedAndUntrustedTicksDoNotCreateCandles(){book.tick(new Market.Quote(T,4000,4001,true,false),true,T);book.tick(new Market.Quote(T,4000,4001,false,true),true,T);book.tick(q(T,4000),false,T);book.tick(q(T,4000),true,T+31000);book.tick(q(T+2000,4000),true,T);book.tick(q(T,4000),true,0);assertTrue(at(T+31000).isEmpty());}
+ @Test public void weekendNeverShowsParkedFormingCandle(){book.seed(f,new Market.Candle(T,4000,4005,3995,4003,T+60000));assertTrue(book.visible(f,0,T+1000,new Market.Quote(T,4000,4001,true,true),true).isEmpty());}
+ @Test public void gapsNeverCreateEmptyPrices(){book.tick(q(T+1000,4000),true,T+1000);book.tick(q(T+600001,4010),true,T+600001);List<FormingBook.Bar>b=at(T+600001);assertEquals(1,b.size());assertEquals(T+600000,b.get(0).candle.time);}
+ @Test public void fourHourRolloverUsesUtcBucket(){book.tick(q(T+14400001,4000),true,T+14400001);List<FormingBook.Bar>b=book.visible(Market.Frame.H4,0,T+14400001,q(T+14400001,4000),true);assertEquals(T+14400000,b.get(0).candle.time);}
+}
