@@ -50,5 +50,5 @@ with tempfile.TemporaryDirectory(prefix='aurum-replay-') as name:
     javac = str(Path(jdk)/'bin/javac') if jdk else shutil.which('javac')
     java = str(Path(jdk)/'bin/java') if jdk else shutil.which('java')
     native = root / 'app/src/main/java/com/aurum/scalp'
-    subprocess.run([javac,'-d',str(scratch),str(here/'ZoneReplay.java'), *[str(native/(file+'.java')) for file in ('Market','MarketRegime','ZoneEngine','ZoneSelection','HistoryQuality','MarketClock','PriceFormat')]],check=True)
+    subprocess.run([javac,'-d',str(scratch),str(here/'ZoneReplay.java'), *[str(native/(file+'.java')) for file in ('Market','MarketRegime','ZoneEngine','ZoneSelection','HistoryQuality','MarketClock','PriceFormat','ZoneVisits')]],check=True)
     subprocess.run([java,'-cp',str(scratch),'com.aurum.scalp.ZoneReplay',*map(str,files)],check=True)

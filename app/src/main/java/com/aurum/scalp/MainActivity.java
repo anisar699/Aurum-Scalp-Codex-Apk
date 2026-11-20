@@ -161,7 +161,7 @@ public final class MainActivity extends Activity {
             List<ZoneEngine.Zone> list=new ArrayList<>(near(a,p,side,page==1?6:3));
             list.addAll(ZoneSelection.watches(a,p,side,2,zoneFilter));
             wider(a,p,side).ifPresent(list::add);
-            for(ZoneEngine.Zone z:list)s.append(z.id).append('|').append(side).append('|').append(z.low).append('|').append(z.high).append('|').append(z.cap).append('|').append(z.tests).append('|').append(z.flipped).append('|').append(z.retestWatch).append('|').append(z.reference).append('|').append(z.lastTest).append('|').append(z.confirmedAt).append('|').append(ZoneEngine.context(z,repo.analyses.values())).append(';');
+            for(ZoneEngine.Zone z:list)s.append(z.id).append('|').append(side).append('|').append(z.low).append('|').append(z.high).append('|').append(z.cap).append('|').append(z.tests).append('|').append(z.defendedVisits).append('|').append(z.failedVisits).append('|').append(z.breakPending).append('|').append(z.barsSinceReaction).append('|').append(z.rejectionAtr).append('|').append(z.flipped).append('|').append(z.retestWatch).append('|').append(z.reference).append('|').append(z.lastTest).append('|').append(z.confirmedAt).append('|').append(ZoneEngine.context(z,repo.analyses.values())).append(';');
         }return s.toString();
     }
     private void market(){
@@ -285,14 +285,15 @@ public final class MainActivity extends Activity {
             panel.addView(bound(()->candleSummary(f),10,MUTED));gap(panel,5);
             for(boolean support:new boolean[]{true,false}){
                 TextView line=bound(()->{
-                    List<ZoneEngine.Zone> list=near(repo.analyses.get(f),price(),support,1);
+                    ZoneEngine.Zone z=scalpBand(f,support);
                     String side=support?"Support":"Resistance";
-                    if(list.isEmpty())return side+" · No confirmed zone in range";
-                    ZoneEngine.Zone z=list.get(0);
-                    return side+" "+ZoneSelection.band(z)+" · "+(z.contains(price())?"Reference inside":"$"+money(z.distance(price()))+" from edge");
+                    if(z==null)return side+" · No zone in range";
+                    return side+(z.reference?" watch ":" ")+ZoneSelection.band(z)+" · "
+                        +(z.contains(price())?"Reference inside":"$"+money(z.distance(price()))+" from edge")
+                        +"\nWidth $"+money(z.width())+" · "+(z.reference?z.evidence():z.defendedVisits+" defended visits");
                 },12,support?GREEN:RED);
                 line.setMinHeight(dp(44));
-                line.setOnClickListener(v->{List<ZoneEngine.Zone> list=near(repo.analyses.get(f),price(),support,1);if(!list.isEmpty())detail(list.get(0));});
+                line.setOnClickListener(v->{ZoneEngine.Zone z=scalpBand(f,support);if(z!=null)detail(z);});
                 panel.addView(line);
             }
             Button open=button("Open "+f.label+" chart",false);
@@ -300,6 +301,13 @@ public final class MainActivity extends Activity {
             body.addView(panel);space(8);
         }
         Button pins=button("Manage pinned alerts",false);pins.setOnClickListener(v->managePins());body.addView(pins);
+    }
+    private ZoneEngine.Zone scalpBand(Market.Frame frame,boolean support){
+        ZoneEngine.Analysis analysis=repo.analyses.get(frame);
+        double price=price();
+        List<ZoneEngine.Zone> bands=near(analysis,price,support,1);
+        if(bands.isEmpty())bands=ZoneSelection.watches(analysis,price,support,1,zoneFilter);
+        return bands.isEmpty()?null:bands.get(0);
     }
     private LinearLayout nearestCard(ZoneEngine.Zone z,boolean support){
         int color=support?GREEN:RED;LinearLayout card=card(12);String title=(support?"SUPPORT":"RESISTANCE")+" · "+frame.label;
@@ -313,8 +321,9 @@ public final class MainActivity extends Activity {
     private LinearLayout zoneRow(ZoneEngine.Zone z){
         int color=z.reference?GOLD:z.support?GREEN:RED;LinearLayout card=column();card.setPadding(dp(12),dp(13),dp(12),dp(13));card.setBackground(background(SURFACE,12));View marker=new View(this);marker.setBackground(background(color,2));LinearLayout.LayoutParams ml=new LinearLayout.LayoutParams(-1,dp(3));ml.setMargins(0,0,0,dp(8));card.addView(marker,ml);
         LinearLayout text=column();card.addView(text,new LinearLayout.LayoutParams(-1,-2));text.addView(label(money(z.low)+" – "+money(z.high),14,TEXT,true));gap(text,4);
-        String note=z.reference?(z.retestWatch?"Broken zone · retest needed":"Observed range extreme · unconfirmed"):(z.support?"Support":"Resistance")+" · "+z.tests+" reaction"+(z.tests==1?"":"s")+(z.flipped?" · flip retested":"");text.addView(label(note,10,MUTED,false));
-        String context=ZoneEngine.context(z,repo.analyses.values());if(!context.isEmpty()){gap(text,4);text.addView(label("Context: "+context,10,GOLD,false));}
+        String note=z.reference?(z.breakPending?"One buffered close beyond band":z.retestWatch?"Broken zone · retest needed":"Observed range extreme · unconfirmed"):(z.support?"Support":"Resistance")+" · "+z.tests+" reaction"+(z.tests==1?"":"s")+(z.flipped?" · flip retested":"");text.addView(label(note,10,MUTED,false));
+        if(!z.reference){gap(text,4);text.addView(label(z.defendedVisits+" defended visits since confirmation",10,MUTED,false));}
+        String context=ZoneEngine.context(z,repo.analyses.values());if(!context.isEmpty()){gap(text,4);text.addView(label("Overlap · "+context,10,GOLD,false));}
         TextView width=label("Width $"+money(z.width()),10,MUTED,false);gap(text,4);text.addView(width);
         LinearLayout meta=column();TextView evidence=label(z.evidence(),10,color,true);evidence.setGravity(Gravity.END);meta.addView(evidence);gap(meta,5);TextView gap=label("",10,MUTED,false);gap.setGravity(Gravity.END);meta.addView(gap);quoteBindings.add(()->set(gap,z.contains(price())?"Inside zone":"$"+money(z.distance(price()))+" from edge"));
         LinearLayout.LayoutParams mp=new LinearLayout.LayoutParams(-1,-2);mp.setMargins(dp(6),0,0,0);card.addView(meta,mp);card.setOnClickListener(v->detail(z));return card;
@@ -322,8 +331,11 @@ public final class MainActivity extends Activity {
     private String insight(ZoneEngine.Analysis a,double price){
         if(!"Current candles".equals(DataFreshness.state(a,repo.marketNow(),repo.liveSynced.getOrDefault(frame,0L),repo.quote)))return "Historical context · "+candleSummary(frame);
         String result="Swing structure · "+a.structure+". ";List<ZoneEngine.Zone> support=near(a,price,true,1),res=near(a,price,false,1);
-        if(!support.isEmpty()&&support.get(0).contains(price))result+="Reference price is testing confirmed support.";
-        else if(!res.isEmpty()&&res.get(0).contains(price))result+="Reference price is testing confirmed resistance.";
+        boolean atSupport=!support.isEmpty()&&support.get(0).contains(price);
+        boolean atResistance=!res.isEmpty()&&res.get(0).contains(price);
+        if(atSupport&&atResistance)result+="Reference price is inside overlapping support and resistance.";
+        else if(atSupport)result+="Reference price is testing confirmed support.";
+        else if(atResistance)result+="Reference price is testing confirmed resistance.";
         else if(support.isEmpty()||res.isEmpty())result+="No confirmed nearby "+(support.isEmpty()?"support":"resistance")+"; watch references are marked separately.";
         else result+="Nearest confirmed edges: support $"+money(support.get(0).distance(price))+" away; resistance $"+money(res.get(0).distance(price))+" away.";
         if(repo.quote!=null&&a.atr>0&&repo.quote.spread()>a.atr*.20)result+=" Spread is large relative to this timeframe's ATR.";
@@ -332,8 +344,18 @@ public final class MainActivity extends Activity {
     private void detail(ZoneEngine.Zone z){
         String context=ZoneEngine.context(z,repo.analyses.values());
         String msg="Band: "+money(z.low)+" – "+money(z.high)+" USD/oz\nWidth: $"+money(z.width())+"\nEvidence: "+z.evidence()+"\n";
-        if(z.reference)msg+=z.retestWatch?"This zone was broken. Two closed candles have moved beyond it, but a confirmed reaction in the new role has not occurred. It is a watch reference, not active confirmed support/resistance.\n":"This is a recent observed high/low of closed candles. A complete confirmed swing is not available here yet.\n";
-        else msg+="Separated reactions in current role: "+z.tests+"\nLast reaction: "+TIME.format(Instant.ofEpochMilli(z.lastTest))+"\nConfirmed after: "+TIME.format(Instant.ofEpochMilli(z.confirmedAt))+"\nRole: "+(z.flipped?"Broken, then retested in opposite role":"Confirmed swing role")+"\n";
+        if(z.breakPending)msg+="One buffered close beyond this band. A second confirms the break. Break and retest tracking continue.\n";
+        else if(z.reference)msg+=z.retestWatch?"This zone was broken. Two closed candles have moved beyond it, but a confirmed reaction in the new role has not occurred. It is a watch reference, not active confirmed support/resistance.\n":"This is a recent observed high/low of closed candles. A complete confirmed swing is not available here yet.\n";
+        else{
+            msg+="Independent swing reactions: "+z.tests+"\nDefended / failed re-entries: "+z.defendedVisits+" / "+z.failedVisits
+                +"\nMean swing rejection: "+money(z.rejectionAtr)+" ATR"
+                +"\nLast reaction: "+TIME.format(Instant.ofEpochMilli(z.lastTest))+" · "+z.barsSinceReaction+" bars ago"
+                +"\nRole: "+(z.flipped?"Broken, then retested in opposite role":"Confirmed swing role")+"\n";
+            Market.Quote quote=repo.quote;
+            if(z.width()>0&&SmartAlerts.usableQuote(quote,repo.quoteOnline,repo.marketNow())){
+                msg+="Live spread: $"+money(quote.spread())+" · "+Math.round(quote.spread()/z.width()*100)+"% of band width\n";
+            }
+        }
         msg+="\nTimeframe overlap: "+(context.isEmpty()?"None":context)+"\nLevels use provider MID candles, not Exness BID candles. Bid and ask are shown separately; execution prices and broker charts can differ.\n\nBands are bounded during clustering. Prices that do not fit start separate zones; old bands are not widened by today's volatility. Evidence labels are not probabilities.";
         final String copy=msg+"\n"+candleSummary(z.frame)+"\nDistance from edge: $"+money(z.distance(price()));
         AlertDialog.Builder dialog=new AlertDialog.Builder(this).setTitle(z.frame.label+" zone details").setMessage(copy).setPositiveButton("Close",null)
@@ -368,7 +390,8 @@ public final class MainActivity extends Activity {
     }
     private String pinAvailability(ZoneSelection.Pin pin){
         ZoneEngine.Analysis a=repo.analyses.get(pin.frame());
-        return a!=null&&(ZoneSelection.resolve(pin,a)!=null)?"":" · zone unavailable";
+        ZoneEngine.Zone match=ZoneSelection.resolve(pin,a);
+        return match==null?" · zone unavailable":match.breakPending?" · break pending":"";
     }
     private void analyst(){
         ZoneEngine.Analysis a=analysis();heading("Market structure readout","Rules and observed reactions · no win-rate claims");
@@ -397,7 +420,7 @@ public final class MainActivity extends Activity {
         methodCard("02  /  Confirm swings without unfinished bars","All OHLC data is validated, sorted and filtered to completed UTC bars. 1m, 5m, 15m and 4H swings require 2 closed candles on both sides; 1H requires 3. A rejection must move at least 0.25 of its local ATR. Confirmation waits for those later candles to close; elapsed time varies with session closures. Biquote bars must use the configured UTC bucket alignment. Known provider overnight/weekend closures are allowed between adjacent macro trading bars; unexpected data holes remain disallowed.");
         methodCard("03  /  Bounded bands, no widening old history","Each band uses the volatility at its first confirmed pivot. Its width cap is the larger of a small minimum and the smaller of an ATR fraction and price fraction. Limits: 1m 0.55 ATR / 0.025% of price; 5m 0.45 ATR / 0.06%; 15m 0.40 ATR / 0.09%; 1H 0.32 ATR / 0.12%; 4H 0.25 ATR / 0.18%. Minimum widths are $0.20 / $0.40 / $0.60 / $1.00 / $1.50 respectively. A pivot only joins if the whole price cluster still fits. A band is never cropped after merging to make it appear precise.");
         methodCard("04  /  Confirm breaks and retests in time order","Every closed bar is replayed chronologically. Two consecutive closes beyond a band's edge and buffer invalidate the active role. The zone can become active again only after a newly confirmed pivot in the holding role. Old reaction counts reset after a break. Pending areas appear separately as Retest watch, without a strength score.");
-        methodCard("05  /  Count independent evidence","A repeated test needs a later confirmed pivot, separation of at least wing + 1 bars, and a move away from the area. Fresh swing = 1; Retested = 2; Repeated = 3 or more reactions in the current role. Overlapping same-role bands add timeframe labels, without multiplying scores. No accuracy percentage is assigned.");
+        methodCard("05  /  Count independent evidence","A repeated test needs a later confirmed pivot, separation of at least wing + 1 bars, and a move away from the area. An existing band also logs defended visits after price moves away, comes back from the valid side and closes away again. Swing reactions and visits can describe the same move. Overlap labels require at least half of the smaller current band. A band with one buffered adverse close is marked Break pending.");
         methodCard("06  /  Keep gaps honest","Nearby lists are limited to 10 ATR on intraday frames, 18 ATR on 1H and 24 ATR on 4H. Real confirmed bands and broken-zone retest watches are ordered by distance; the latter are always marked unconfirmed. Recent range extremes appear as Unconfirmed only when no nearby area exists and they are actually on the relevant side of price. No psychological price grid or evenly spaced fake supports are generated. Real gaps can remain during strong one-way moves.");
         methodCard("07  /  biquote prices and candle closure","Live XAUUSD ticks arrive through the biquote SignalR stream; REST snapshots retry at 15s when the stream has no fresh quote (60s for a closed market). History follows UTC candle closes using incremental tails, with hourly full corrections. Provider backoff always wins. Candles must have isOpen=false, valid OHLC, UTC interval alignment and a nominal interval end no later than trusted server time. Open-marked Friday bars stay excluded even on Saturday. No session-close time or missing OHLC is invented.");
         methodCard("08  /  Quote state and storage","Market closed uses the provider state. Live means a successfully received tick at most 30s old; Delayed 30–90s; Stale beyond 90s. Saved means no successful quote connection in the current repository session (shared with background monitoring). Atomic private caching preserves real prior data offline. Obsolete requests from a previous app session cannot overwrite the current one. No random prices, fixed target calibration, custom certificates or demo market history are shipped.");

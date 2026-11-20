@@ -85,7 +85,7 @@ public final class SmartAlerts {
             List<ZoneEngine.Zone> zones=new ArrayList<>(a.zones);zones.sort(Comparator.comparingDouble(z->Math.abs(z.center-quote.mid())));
             for(ZoneEngine.Zone z:zones){
                 boolean pinned=pinnedZone!=null&&pinnedZone.id.equals(z.id);
-                if(z.reference||(pinned?pin.trigger()!=ZoneSelection.Trigger.APPROACH:!auto))continue;String id=z.id+":"+z.support;active.add(id);
+                if(z.reference||z.breakPending||(pinned?pin.trigger()!=ZoneSelection.Trigger.APPROACH:!auto))continue;String id=z.id+":"+z.support;active.add(id);
                 double distance=quote.mid()<z.low?z.low-quote.mid():quote.mid()>z.high?quote.mid()-z.high:0;
                 Approach p=s.zones.get(id);if(p==null){p=new Approach();p.armed=z.validSide(quote.mid())&&distance>a.atr*.60;s.zones.put(id,p);continue;}
                 if(z.validSide(quote.mid())&&distance>a.atr*.60)p.armed=true;

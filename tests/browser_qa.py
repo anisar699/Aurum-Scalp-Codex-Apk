@@ -49,6 +49,13 @@ with sync_playwright() as p:
  # Nearest watch must be readable even when stronger distant zones exist.
  watch=dict(data,history=rows,forming=[],bands=[dict(id='near-watch',low=4002.2,high=4002.5,price=4002.35,support=False,watch=True,macro=False,title='5m R watch',priority=1090),dict(id='far-r',low=4008,high=4009,price=4008.5,support=False,watch=False,macro=False,title='5m R',priority=1010)])
  render(watch);check('4008.00' in page.locator('#zone-info').inner_text(),'Confirmed zone is preferred to a nearby watch');page.locator('#zone-info button').first.click();check('confirmed reactions' in page.locator('#zone-detail').inner_text(),'Tapping a labelled zone opens zone details');check(' '.join(page.locator('#legend').get_attribute('aria-label').split())==' '.join(page.locator('#legend').inner_text().replace('\n','; ').split()),'Accessible candle text contains current OHLC values')
+ confirmed=dict(data['bands'][0],tests=3,defendedVisits=2,failedVisits=1)
+ pressured=dict(data['bands'][1],watch=True,pendingBreak=True,title='5m R pending')
+ render(dict(data,bands=[confirmed,pressured]))
+ page.locator('#zone-info button').first.click()
+ check('2 defended / 1 failed visits' in page.locator('#zone-detail').inner_text(),'Chart detail reports confirmed visit evidence')
+ page.locator('#zone-info button').nth(1).click()
+ check('Break pending · one adverse close' in page.locator('#zone-detail').inner_text(),'Chart separates a first adverse close from confirmed zones')
  # Actual two-pointer touchscreen pinch; coordinates derived from plot DOM bounds.
  render(data);client=ctx.new_cdp_session(page);b=page.locator('#plot').bounding_box();cx=b['x']+b['width']*.48;cy=b['y']+b['height']*.5;before=inspect()['range']
  def touch(kind,gap):client.send('Input.dispatchTouchEvent',{'type':kind,'touchPoints':[] if kind=='touchEnd' else [{'x':cx-gap,'y':cy,'id':1},{'x':cx+gap,'y':cy,'id':2}]})

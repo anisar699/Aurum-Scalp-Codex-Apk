@@ -22,7 +22,7 @@ final class MonitorLevels {
         String state = Market.priceState(quote, online, now, analyses.values()).replace("● ", "");
         String title = "Aurum · " + state + (price > 0 ? " · " + MainActivity.money(price) + (state.equals("CANDLE REFERENCE") ? " MID close" : " MID") : "");
         List<String> rows = new ArrayList<>(FRAMES.length);
-        boolean unconfirmed = false;
+        boolean unconfirmed = false, pendingBreak = false;
         boolean savedCandles = false, staleCandles = false;
         for (Market.Frame frame : FRAMES) {
             ZoneEngine.Analysis analysis = analyses.get(frame);
@@ -37,11 +37,13 @@ final class MonitorLevels {
             String marker = freshness.isEmpty() ? "" : stale ? "†" : "*";
             rows.add(frame.label + marker + " · " + band("S", support) + "  " + band("R", resistance));
             unconfirmed |= isReference(support) || isReference(resistance);
+            pendingBreak |= (support != null && support.breakPending) || (resistance != null && resistance.breakPending);
             savedCandles |= !freshness.isEmpty() && !stale;
             staleCandles |= stale;
         }
         List<String> labels = new ArrayList<>();
         if (unconfirmed) labels.add("? Watch");
+        if (pendingBreak) labels.add("! Break pending");
         if (savedCandles) labels.add("* Saved candles");
         if (staleCandles) labels.add("† Stale candles");
         String legend = String.join(" · ", labels);
@@ -55,12 +57,12 @@ final class MonitorLevels {
     }
 
     private static boolean isReference(ZoneEngine.Zone zone) {
-        return zone != null && zone.reference;
+        return zone != null && zone.reference && !zone.breakPending;
     }
 
     private static String band(String side, ZoneEngine.Zone zone) {
         if (zone == null) return side + " —";
         String bounds = ZoneSelection.band(zone);
-        return side + (zone.reference ? "? " : " ") + bounds;
+        return side + (zone.breakPending ? "!" : zone.reference ? "?" : "") + " " + bounds;
     }
 }

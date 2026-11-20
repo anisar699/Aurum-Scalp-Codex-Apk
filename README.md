@@ -1,20 +1,20 @@
 # Aurum Scalp
 
-Aurum Scalp is a native Android app for watching XAU/USD support and resistance with live gold prices. It combines short-term execution context on 5m and 15m with market structure on 1H and 4H. Version **2.9.0** uses Android package `com.aurum.scalp` and runs on Android 8.0 (API 26) and later.
+Aurum Scalp is a native Android app for watching XAU/USD support and resistance with live gold prices. It combines short-term execution context on 5m and 15m with market structure on 1H and 4H. Version **3.0.0** uses Android package `com.aurum.scalp` and runs on Android 8.0 (API 26) and later.
 
 ## Use the app
 
 | Where | What you can do |
 | --- | --- |
 | **Market → Scalp View** | See the nearest confirmed bands on 5m, 15m, 1H and 4H alongside the bid/ask spread and 5m volatility. Tap **Structure** for the higher-timeframe view. |
-| **All zones → Distance filter** | Limit zones by USD from the nearest edge or by a multiple of the timeframe's ATR. Confirmed zones, watch areas and wider structure each have their own section. Tap a band for its width, reaction count, last reaction and distance. |
+| **All zones → Distance filter** | Limit zones by USD from the nearest edge or by a multiple of the timeframe's ATR. Confirmed zones, watch areas and wider structure each have their own section. Tap a band for its width, independent swing reactions, defended and failed visits, last reaction, and distance. |
 | **Chart** | Follow the selected timeframe. Use **Focus price** to fit the latest 45 candles and **Latest** to restore the default 100-candle view. **Layers** controls 1H/4H context, EMA50/200, forming candles and nearby zones. Tap a band or its label for details. |
 | **Analysis** | Read the selected timeframe first. Swing structure, EMA/ADX trend, range and volatility have independent labels. |
 | **Health** | Check quote age, last closed candle, last successful history fetch, provider backoff, available history and per-timeframe alert readiness. |
 
 ### Background monitoring and alerts
 
-In **Health**, allow notifications and tap **Start background monitoring**. Expand the notification to see the live price and nearest support (`S`) and resistance (`R`) for **5m, 15m, 1H and 4H**. The collapsed view previews 1H. **Open chart** opens the 1H chart and **Stop monitoring** ends the service. A `?` identifies a watch, `*` marks saved candles, and `†` marks stale candles.
+In **Health**, allow notifications and tap **Start background monitoring**. Expand the notification to see the live price and nearest support (`S`) and resistance (`R`) for **5m, 15m, 1H and 4H**. The collapsed view previews 1H. **Open chart** opens the 1H chart and **Stop monitoring** ends the service. A `?` identifies a retest or range watch, `!` marks a break pending, `*` marks saved candles, and `†` marks stale candles.
 
 Tap a zone and choose **Pin alert** to set an approach, break or retest alert. Each timeframe can have one pin. A pin can follow an overlapping replacement or a confirmed flip. Manage pins from **Health**. Automatic alerts default to 1H and 4H. Breaks and retests use closed candles from their own timeframe. The event window is five minutes for 1H and 4H and 90 seconds for shorter frames. A fresh matching quote is required. Late confirmations show their age and processed closes are saved to prevent repeat alerts. The notification group keeps up to ten recent alerts.
 
@@ -23,6 +23,14 @@ Android controls notification permissions and foreground service limits. Android
 ## Price and zone data
 
 Biquote provides anonymous XAU/USD quotes, a SignalR stream and REST history. The app connects directly to Biquote and uses SignalR keep-alives. REST snapshots cover a delayed or disconnected stream. A REST HTTP 429 pauses REST according to the shared per-IP limit and exact Retry-After, while the live stream has its own retry schedule. HTTP 401/403 applies to the affected resource. Health shows active cooldowns and their reasons. The displayed MID is the average of bid and ask. Bid, ask and spread appear separately. If a newer closed candle becomes the reference, the app identifies it as a candle reference. Biquote prices can differ from a broker's execution prices and the free feed has no delay guarantee. [Biquote API documentation](https://biquote.io/docs/) · [Terms](https://biquote.io/terms.html)
+
+### Support and resistance evidence
+
+Aurum measures independent swing reactions and observes visits to an existing band after price has first moved away. A defended visit comes back from the valid side and closes at least 0.25 ATR clear of the near edge within three bars of the touch. A failed visit closes past the opposite edge and buffer. The counters can describe the same price move and are presented separately.
+
+After one buffered adverse close the band is shown as **Break pending** and its approach alerts pause. The second qualifying closed candle confirms the break. The Chart, Scalp View and All Zones distinguish these bands from confirmed support and resistance. The status notification uses an exclamation mark for a pending band.
+
+The release compared nearest-by-edge ordering with an experimental evidence-weighted ordering across 465,353 archived XAUUSD M5 candles and a separate Biquote sample. The holdout did not show a consistent ranking advantage. [Method and results](docs/VERIFICATION.md#support-and-resistance-research)
 
 Zone analysis uses valid provider-confirmed closed candles. Swing confirmation waits for right-side closes, zone clustering limits width, and watch areas identify unconfirmed references or zones awaiting a retest. The chart can separately show forming or pending previews from the feed. EMA overlays use confirmed closes and appear only when enough history is available. The renderer uses bundled TradingView Lightweight Charts. [Third-party components](docs/THIRD_PARTY.md)
 

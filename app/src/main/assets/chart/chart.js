@@ -43,7 +43,9 @@
   panel.hidden=!band;
   if(!band){panel.textContent='';return;}
   const distance=Core.distance(band,payload.price);
-  const text=`${band.title} ${band.low.toFixed(2)}–${band.high.toFixed(2)} · ${band.watch?'Unconfirmed · watch area':(band.tests||0)+' confirmed reactions'} · ${distance===0?'Reference inside':'$'+distance.toFixed(2)+' from edge'}`
+  const evidence=band.pendingBreak?'Break pending · one adverse close':band.watch?'Unconfirmed · watch area':(band.tests||0)+' confirmed reactions'
+    +(band.defendedVisits==null?'':' · '+band.defendedVisits+' defended / '+band.failedVisits+' failed visits');
+  const text=`${band.title} ${band.low.toFixed(2)}–${band.high.toFixed(2)} · ${evidence} · ${distance===0?'Reference inside':'$'+distance.toFixed(2)+' from edge'}`
     +(band.reaction?' · last reaction '+band.reaction+' UTC':'')+(band.freshness?' · '+band.freshness:'');
   if(panel.textContent!==text)panel.textContent=text;
  }

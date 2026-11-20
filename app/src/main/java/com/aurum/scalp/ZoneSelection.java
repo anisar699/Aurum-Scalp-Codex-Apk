@@ -46,7 +46,7 @@ final class ZoneSelection {
         if (a == null || !Market.finite(price) || price <= 0) return Collections.emptyList();
         List<ZoneEngine.Zone> matches = new ArrayList<>();
         for (ZoneEngine.Zone z : a.zones) {
-            if (!z.reference && z.support == support && z.validSide(price) && limit.includes(z, price, a.atr)) matches.add(z);
+            if (!z.reference && !z.breakPending && z.support == support && z.validSide(price) && limit.includes(z, price, a.atr)) matches.add(z);
         }
         matches.sort(Comparator.comparingDouble((ZoneEngine.Zone z) -> z.distance(price))
             .thenComparing(MOST_REACTIONS).thenComparingDouble(z -> Math.abs(z.center - price)));

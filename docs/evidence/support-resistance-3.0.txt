@@ -1,0 +1,55 @@
+Development candidate comparison
+Archive original validated M5 candles=465353
+development archive 5m candles=465353 evaluated=7634 skippedGaps=171 historyCap=720 stride=36
+weight=0.0 eligible=13443 touches=7728 reactions=3578 invalidations=2496 unresolved=1654 changed=0 meanEdgeATR=0.960
+weight=0.35 eligible=13443 touches=7728 reactions=3586 invalidations=2495 unresolved=1647 changed=118 meanEdgeATR=0.960
+weight=0.65 eligible=13443 touches=7720 reactions=3580 invalidations=2490 unresolved=1650 changed=187 meanEdgeATR=0.960
+weight=1.0 eligible=13443 touches=7704 reactions=3580 invalidations=2470 unresolved=1654 changed=335 meanEdgeATR=0.963
+development archive 15m candles=155857 evaluated=4907 skippedGaps=329 historyCap=480 stride=18
+weight=0.0 eligible=8408 touches=4721 reactions=2177 invalidations=1638 unresolved=906 changed=0 meanEdgeATR=0.980
+weight=0.35 eligible=8408 touches=4720 reactions=2179 invalidations=1631 unresolved=910 changed=40 meanEdgeATR=0.980
+weight=0.65 eligible=8408 touches=4717 reactions=2179 invalidations=1627 unresolved=911 changed=91 meanEdgeATR=0.981
+weight=1.0 eligible=8408 touches=4708 reactions=2175 invalidations=1619 unresolved=914 changed=182 meanEdgeATR=0.983
+development archive 1H candles=38952 evaluated=1446 skippedGaps=512 historyCap=1000 stride=12
+weight=0.0 eligible=2093 touches=1082 reactions=502 invalidations=391 unresolved=189 changed=0 meanEdgeATR=1.234
+weight=0.35 eligible=2093 touches=1082 reactions=501 invalidations=392 unresolved=189 changed=2 meanEdgeATR=1.234
+weight=0.65 eligible=2093 touches=1082 reactions=501 invalidations=392 unresolved=189 changed=6 meanEdgeATR=1.235
+weight=1.0 eligible=2093 touches=1082 reactions=502 invalidations=390 unresolved=190 changed=21 meanEdgeATR=1.236
+development archive 4H candles=10154 evaluated=784 skippedGaps=227 historyCap=360 stride=6
+weight=0.0 eligible=1330 touches=727 reactions=334 invalidations=269 unresolved=124 changed=0 meanEdgeATR=1.081
+weight=0.35 eligible=1330 touches=727 reactions=334 invalidations=269 unresolved=124 changed=4 meanEdgeATR=1.081
+weight=0.65 eligible=1330 touches=726 reactions=333 invalidations=269 unresolved=124 changed=11 meanEdgeATR=1.081
+weight=1.0 eligible=1330 touches=724 reactions=332 invalidations=268 unresolved=124 changed=30 meanEdgeATR=1.085
+
+Chronological holdout
+Archive original validated M5 candles=465353
+holdout archive 5m candles=465353 evaluated=4986 skippedGaps=134 historyCap=720 stride=36
+weight=0.0 eligible=8563 touches=4691 reactions=2083 invalidations=1695 unresolved=913 changed=0 meanEdgeATR=1.010
+weight=0.35 eligible=8563 touches=4691 reactions=2086 invalidations=1690 unresolved=915 changed=25 meanEdgeATR=1.010
+holdout archive 15m candles=155857 evaluated=3190 skippedGaps=228 historyCap=480 stride=18
+weight=0.0 eligible=5314 touches=2822 reactions=1244 invalidations=1064 unresolved=514 changed=0 meanEdgeATR=1.046
+weight=0.35 eligible=5314 touches=2822 reactions=1242 invalidations=1065 unresolved=515 changed=13 meanEdgeATR=1.046
+holdout archive 1H candles=38952 evaluated=933 skippedGaps=348 historyCap=1000 stride=12
+weight=0.0 eligible=1280 touches=618 reactions=271 invalidations=243 unresolved=104 changed=0 meanEdgeATR=1.296
+weight=0.35 eligible=1280 touches=618 reactions=271 invalidations=243 unresolved=104 changed=0 meanEdgeATR=1.296
+holdout archive 4H candles=10154 evaluated=513 skippedGaps=154 historyCap=360 stride=6
+weight=0.0 eligible=815 touches=426 reactions=185 invalidations=175 unresolved=66 changed=0 meanEdgeATR=1.090
+weight=0.35 eligible=815 touches=426 reactions=185 invalidations=175 unresolved=66 changed=2 meanEdgeATR=1.090
+Biquote MID holdout 5m candles=288 evaluated=33 skippedGaps=1 historyCap=720 stride=6
+weight=0.0 eligible=48 touches=23 reactions=6 invalidations=12 unresolved=5 changed=0 meanEdgeATR=1.233
+weight=0.35 eligible=48 touches=23 reactions=6 invalidations=12 unresolved=5 changed=0 meanEdgeATR=1.233
+Biquote MID holdout 15m candles=192 evaluated=17 skippedGaps=1 historyCap=480 stride=6
+weight=0.0 eligible=23 touches=11 reactions=5 invalidations=5 unresolved=1 changed=0 meanEdgeATR=1.102
+weight=0.35 eligible=23 touches=11 reactions=5 invalidations=5 unresolved=1 changed=0 meanEdgeATR=1.102
+Biquote MID holdout 1H candles=168 evaluated=10 skippedGaps=4 historyCap=1000 stride=6
+weight=0.0 eligible=12 touches=7 reactions=4 invalidations=2 unresolved=1 changed=0 meanEdgeATR=0.941
+weight=0.35 eligible=12 touches=7 reactions=4 invalidations=2 unresolved=1 changed=0 meanEdgeATR=0.941
+Biquote MID holdout 4H candles=180 evaluated=13 skippedGaps=3 historyCap=360 stride=6
+weight=0.0 eligible=19 touches=10 reactions=4 invalidations=5 unresolved=1 changed=0 meanEdgeATR=1.123
+weight=0.35 eligible=19 touches=10 reactions=4 invalidations=5 unresolved=1 changed=0 meanEdgeATR=1.123
+
+Native Android regression
+PASS: 12 Android biquote/feed checks; 12 repository/chart audit checks; 19 monitoring/notification/UI checks; 18 advanced chart checks; 14 deep-debug regression checks; 9 real-provider checks
+
+Live Biquote smoke check
+PASS real Android biquote TLS REST + SignalR; source=biquote · XAUUSD · MID analysis; quote=● LIVE; MID=3582.852; stream=Subscribed to XAUUSD; startupAllFramesAndStreamMs=7127; initialQuoteAgeMs=3438; 1m=300 closed / 17 zones / 0 gaps; 5m=288 closed / 24 zones / 1 gaps; 15m=192 closed / 15 zones / 2 gaps; 1H=168 closed / 10 zones / 0 gaps; 4H=180 closed / 11 zones / 0 gaps
