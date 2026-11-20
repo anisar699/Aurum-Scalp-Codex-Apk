@@ -1,114 +1,87 @@
 package com.aurum.scalp;
 
-import java.io.BufferedReader;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import static com.aurum.scalp.ReactionReplay.*;
 
-/** Compare candidate rankings on identical closed-candle prefixes and future observation windows. */
+/** Compare pivot definitions and lifecycle states on identical closed-candle prefixes. */
 public final class CompareStrength {
-    private static final int WARMUP = 80;
-    private static final int HORIZON = 6;
-    private static final double MAX_EDGE_DISTANCE = 3;
-    private static final Comparator<ZoneEngine.Zone> REACTIONS =
-        Comparator.comparingInt((ZoneEngine.Zone zone) -> zone.tests).reversed();
-
-    private static final class Results {
-        int eligible, touches, reactions, invalidations, unresolved, changed;
-        double distance;
-        void print(String label) {
-            System.out.printf(Locale.US,
-                "%s eligible=%d touches=%d reactions=%d invalidations=%d unresolved=%d changed=%d meanEdgeATR=%.3f%n",
-                label, eligible, touches, reactions, invalidations, unresolved, changed, distance / Math.max(1, eligible));
-        }
-    }
-
     public static void main(String[] args) throws Exception {
         Market.Frame frame = Market.Frame.valueOf(args[0]);
         long split = Long.parseLong(args[1]), until = Long.parseLong(args[2]);
         int stride = Integer.parseInt(args[3]), history = Integer.parseInt(args[4]);
         List<Market.Candle> bars = read(Path.of(args[5]), frame);
-        double[] weights = Arrays.stream(args[6].split(",")).mapToDouble(Double::parseDouble).toArray();
-        Results[] summary = Arrays.stream(weights).mapToObj(ignored -> new Results()).toArray(Results[]::new);
+        Results current = new Results(), retest = new Results();
+        Results confirmedTurns = new Results(true), pendingTurns = new Results(true), retestTurns = new Results(true);
+        int turnHorizon = switch (frame) { case M5 -> 72; case M15 -> 64; case H1 -> 48; default -> 24; };
+        int nextTurnOrigin = 0;
+        double[] thresholds = {.5, .75, 1};
+        Results[] strict = {new Results(), new Results(), new Results()};
+        Results recent = new Results();
         int evaluated = 0, gaps = 0;
         for (int n = WARMUP; n + HORIZON <= bars.size(); n += stride) {
-            long origin = bars.get(n - 1).endTime;
-            if (origin < split || bars.get(n + HORIZON - 1).endTime >= until) continue;
-            if (bars.get(n + HORIZON - 1).time - bars.get(n - 1).time != HORIZON * frame.duration()) {
+            Market.Candle origin = bars.get(n - 1);
+            if (origin.endTime < split || bars.get(n + HORIZON - 1).endTime >= until) continue;
+            if (!consecutive(bars, n, frame.duration())) {
                 gaps++;
                 continue;
             }
-            var analysis = ZoneEngine.calculate(bars.subList(Math.max(0, n - history), n), frame, origin);
-            if (analysis.atr <= 0) continue;
+            List<Market.Candle> prefix = bars.subList(Math.max(0, n - history), n);
+            List<Market.Candle> future = bars.subList(n, n + HORIZON);
+            ZoneEngine.Analysis production = ZoneEngine.calculate(prefix, frame, origin.endTime);
+            if (production.atr <= 0) continue;
             evaluated++;
+            ZoneEngine.Analysis[] alternatives = new ZoneEngine.Analysis[thresholds.length];
+            for (int i = 0; i < thresholds.length; i++)
+                alternatives[i] = ZoneEngine.calculate(prefix, frame, origin.endTime, 5, thresholds[i]);
+
+            Evaluation turnWindow = null;
+            if (n >= nextTurnOrigin && n + turnHorizon <= bars.size() && bars.get(n + turnHorizon - 1).endTime < until) {
+                turnWindow = turns(bars.subList(n, n + turnHorizon), production.atr, frame.duration());
+                nextTurnOrigin = n + turnHorizon;
+            }
             for (boolean support : new boolean[]{true, false}) {
-                double price = bars.get(n - 1).close;
-                List<ZoneEngine.Zone> candidates = analysis.zones.stream()
-                    .filter(z -> z.support == support && z.validSide(price) && z.distance(price) <= MAX_EDGE_DISTANCE * analysis.atr)
-                    .toList();
-                ZoneEngine.Zone nearest = pick(candidates, price, analysis.atr, 0);
-                if (nearest == null) continue;
-                for (int i = 0; i < weights.length; i++) {
-                    ZoneEngine.Zone selected = weights[i] == 0 ? nearest : pick(candidates, price, analysis.atr, weights[i]);
-                    if (selected != nearest) summary[i].changed++;
-                    summary[i].eligible++;
-                    summary[i].distance += selected.distance(price) / analysis.atr;
-                    score(summary[i], selected, bars.subList(n, n + HORIZON), analysis.atr);
+                double price = origin.close, atr = production.atr;
+                ZoneEngine.Zone nearest = first(ZoneSelection.confirmed(production, price, support, 1, LIMIT));
+                current.add(nearest, price, atr, origin.endTime, future);
+                List<ZoneEngine.Zone> watches = ZoneSelection.lifecycleWatches(production, price, support, Integer.MAX_VALUE, LIMIT);
+                ZoneEngine.Zone retestWatch = watches.stream().filter(z -> z.retestWatch).findFirst().orElse(null);
+                retest.add(retestWatch, price, atr, origin.endTime, future);
+                if (turnWindow != null) {
+                    ZoneEngine.Zone breakPending = watches.stream().filter(z -> z.breakPending).findFirst().orElse(null);
+                    confirmedTurns.add(nearest, price, atr, origin.endTime, turnWindow);
+                    pendingTurns.add(breakPending, price, atr, origin.endTime, turnWindow);
+                    retestTurns.add(retestWatch, price, atr, origin.endTime, turnWindow);
+                }
+                for (int i = 0; i < thresholds.length; i++) {
+                    boolean compareRecency = thresholds[i] == .75;
+                    List<ZoneEngine.Zone> candidates = ZoneSelection.confirmed(alternatives[i], price, support,
+                        compareRecency ? Integer.MAX_VALUE : 1, LIMIT);
+                    strict[i].add(first(candidates), price, atr, origin.endTime, future);
+                    if (compareRecency) {
+                        // At most 0.25 ATR of ranking credit, halved every 24 bars.
+                        ZoneEngine.Zone best = candidates.stream().min(Comparator.comparingDouble(z ->
+                            z.distance(price) / atr - .25 * Math.pow(.5, z.barsSinceReaction / 24.0))).orElse(null);
+                        recent.add(best, price, atr, origin.endTime, future);
+                    }
                 }
             }
         }
         System.out.printf(Locale.US, "%s candles=%d evaluated=%d skippedGaps=%d historyCap=%d stride=%d%n",
             frame.label, bars.size(), evaluated, gaps, history, stride);
-        for (int i = 0; i < weights.length; i++) summary[i].print("weight=" + weights[i]);
+        current.print("production");
+        retest.print("retest watch, proposed new role");
+        for (int i = 0; i < thresholds.length; i++) strict[i].print("5-wing, min rejection=" + thresholds[i] + " ATR");
+        recent.print("5-wing, min rejection=0.75 ATR, bounded recency");
+        System.out.printf("%d-bar turn location probe (nearest band per state and side)%n", turnHorizon);
+        confirmedTurns.print("confirmed turns");
+        pendingTurns.print("break-pending turns");
+        retestTurns.print("retest-watch turns");
     }
 
-    private static ZoneEngine.Zone pick(List<ZoneEngine.Zone> zones,double price,double atr,double weight) {
-        return zones.stream().min(Comparator.comparingDouble((ZoneEngine.Zone zone) -> zone.distance(price)/atr-weight*strength(zone))
-            .thenComparing(REACTIONS).thenComparingDouble(zone -> Math.abs(zone.center-price))).orElse(null);
-    }
-
-    private static double strength(ZoneEngine.Zone zone) {
-        int evidence = Math.max(zone.tests, 1 + zone.defendedVisits);
-        double repeats = evidence / (evidence + 1.5);
-        double rejection = Math.min(1, zone.rejectionAtr / 1.5);
-        double recency = 1 / (1 + zone.barsSinceReaction / 36.0);
-        return (.42 * repeats + .33 * rejection + .25 * recency)
-            / (1 + .2 * zone.failedVisits) * (zone.breakPending ? .55 : 1);
-    }
-
-    private static void score(Results result, ZoneEngine.Zone zone, List<Market.Candle> next, double atr) {
-        boolean touched = false;
-        int beyond = 0;
-        double margin = Math.max(.05, atr * .05);
-        for (Market.Candle candle : next) {
-            if (!touched && candle.low <= zone.high && candle.high >= zone.low) {
-                touched = true;
-                result.touches++;
-            }
-            if (!touched) continue;
-            beyond = (zone.support ? candle.close < zone.low - margin : candle.close > zone.high + margin) ? beyond + 1 : 0;
-            if (beyond >= 2) {
-                result.invalidations++;
-                return;
-            }
-            if (zone.support ? candle.close >= zone.high + .50 * atr : candle.close <= zone.low - .50 * atr) {
-                result.reactions++;
-                return;
-            }
-        }
-        if (touched) result.unresolved++;
-    }
-
-    private static List<Market.Candle> read(Path file, Market.Frame frame) throws Exception {
-        List<Market.Candle> bars = new ArrayList<>();
-        try (BufferedReader input = Files.newBufferedReader(file)) {
-            for (String line; (line = input.readLine()) != null;) {
-                String[] col = line.split(",");
-                long t = Long.parseLong(col[0]);
-                bars.add(new Market.Candle(t, Double.parseDouble(col[1]), Double.parseDouble(col[2]),
-                    Double.parseDouble(col[3]), Double.parseDouble(col[4]), t + frame.duration()));
-            }
-        }
-        return bars;
+    private static ZoneEngine.Zone first(List<ZoneEngine.Zone> zones) {
+        return zones.isEmpty() ? null : zones.get(0);
     }
 }

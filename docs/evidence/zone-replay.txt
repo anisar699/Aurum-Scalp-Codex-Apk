@@ -3,34 +3,24 @@ archive M5 valid closed=288
 archive M15 valid closed=192
 archive H1 valid closed=168
 archive H4 valid closed=180
-Non-overlapping six-closed-bar windows. Nearest confirmed zone on either side; first touch; 0.5 ATR close away versus two buffered closes beyond the band.
-Median delay is bars from touch to reaction, not app or provider notification latency.
-archive 1m closed=300 gaps=0
-  Downtrend / Normal windows=8 covered=8 touches=3 reactions=1 invalidated=1 unresolved=1 skipped-gaps=0 median-bars-after-touch=1
-  Range / Normal windows=11 covered=11 touches=9 reactions=2 invalidated=7 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
-  Transition / mixed / Normal windows=16 covered=16 touches=10 reactions=4 invalidated=3 unresolved=3 skipped-gaps=0 median-bars-after-touch=1
-  Uptrend / Normal windows=1 covered=1 touches=1 reactions=0 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
-archive 5m closed=288 gaps=1
-  Downtrend / Normal windows=2 covered=2 touches=2 reactions=1 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
-  Range / High windows=4 covered=4 touches=4 reactions=4 invalidated=0 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
-  Range / Low windows=2 covered=2 touches=1 reactions=0 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
-  Range / Normal windows=17 covered=17 touches=11 reactions=4 invalidated=5 unresolved=2 skipped-gaps=0 median-bars-after-touch=1
-  Transition / mixed / High windows=1 covered=1 touches=1 reactions=1 invalidated=0 unresolved=0 skipped-gaps=0 median-bars-after-touch=4
-  Transition / mixed / Low windows=2 covered=2 touches=1 reactions=0 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
-  Transition / mixed / Normal windows=5 covered=5 touches=3 reactions=2 invalidated=0 unresolved=1 skipped-gaps=0 median-bars-after-touch=1
-  Uptrend / Normal windows=1 covered=1 touches=1 reactions=0 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
-archive 15m closed=192 gaps=2
-  Downtrend / High windows=1 covered=1 touches=0 reactions=0 invalidated=0 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
-  Downtrend / Normal windows=2 covered=2 touches=2 reactions=1 invalidated=0 unresolved=1 skipped-gaps=0 median-bars-after-touch=4
-  Range / Normal windows=10 covered=10 touches=8 reactions=5 invalidated=1 unresolved=2 skipped-gaps=0 median-bars-after-touch=1
-  Transition / mixed / Normal windows=2 covered=2 touches=2 reactions=0 invalidated=1 unresolved=1 skipped-gaps=1 median-bars-after-touch=n/a
-  Uptrend / Normal windows=2 covered=2 touches=1 reactions=0 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
-archive 1H closed=168 gaps=0
-  Downtrend / Low windows=1 covered=1 touches=0 reactions=0 invalidated=0 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
-  Downtrend / Normal windows=7 covered=7 touches=3 reactions=0 invalidated=3 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
-  Range / Normal windows=1 covered=1 touches=1 reactions=0 invalidated=1 unresolved=0 skipped-gaps=0 median-bars-after-touch=n/a
-  Transition / mixed / Normal windows=5 covered=5 touches=3 reactions=0 invalidated=2 unresolved=1 skipped-gaps=0 median-bars-after-touch=n/a
-archive 4H closed=180 gaps=0
-  Downtrend / Normal windows=7 covered=7 touches=3 reactions=1 invalidated=2 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
-  Transition / mixed / Normal windows=5 covered=5 touches=3 reactions=1 invalidated=2 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
-  Uptrend / Normal windows=4 covered=4 touches=1 reactions=1 invalidated=0 unresolved=0 skipped-gaps=0 median-bars-after-touch=1
+Six consecutive closed bars; nearest confirmed band per side within 3 ATR; 20 controls per band.
+archive 1m closed=300 accepted-windows=36 skipped-gaps=0
+production selected=56 touches=31 reactions=9 breaks=15 unresolved=7 weeks=1
+  distance-matched control-touches=29.5 | reacted/touch 29.0% vs 35.9% (-6.9pp, weekly SE n/a) | broken/touch 48.4% vs 42.7% (+5.7pp, weekly SE n/a) | reacted/selection 16.1% vs 18.9% (-2.9pp, weekly SE n/a)
+  uniform 0–3 ATR control-touches=23.7 | reacted/touch 29.0% vs 34.7% (-5.6pp, weekly SE n/a) | broken/touch 48.4% vs 44.6% (+3.8pp, weekly SE n/a) | reacted/selection 16.1% vs 14.6% (+1.4pp, weekly SE n/a)
+archive 5m closed=288 accepted-windows=34 skipped-gaps=0
+production selected=65 touches=34 reactions=16 breaks=10 unresolved=8 weeks=1
+  distance-matched control-touches=33.2 | reacted/touch 47.1% vs 53.9% (-6.9pp, weekly SE n/a) | broken/touch 29.4% vs 26.5% (+2.9pp, weekly SE n/a) | reacted/selection 24.6% vs 27.5% (-2.9pp, weekly SE n/a)
+  uniform 0–3 ATR control-touches=24.0 | reacted/touch 47.1% vs 38.1% (+8.9pp, weekly SE n/a) | broken/touch 29.4% vs 30.0% (-0.6pp, weekly SE n/a) | reacted/selection 24.6% vs 14.1% (+10.5pp, weekly SE n/a)
+archive 15m closed=192 accepted-windows=17 skipped-gaps=1
+production selected=32 touches=19 reactions=7 breaks=5 unresolved=7 weeks=1
+  distance-matched control-touches=19.3 | reacted/touch 36.8% vs 37.6% (-0.7pp, weekly SE n/a) | broken/touch 26.3% vs 36.8% (-10.5pp, weekly SE n/a) | reacted/selection 21.9% vs 22.7% (-0.8pp, weekly SE n/a)
+  uniform 0–3 ATR control-touches=11.7 | reacted/touch 36.8% vs 38.9% (-2.0pp, weekly SE n/a) | broken/touch 26.3% vs 32.5% (-6.2pp, weekly SE n/a) | reacted/selection 21.9% vs 14.2% (+7.7pp, weekly SE n/a)
+archive 1H closed=168 accepted-windows=11 skipped-gaps=3
+production selected=11 touches=5 reactions=0 breaks=5 unresolved=0 weeks=2
+  distance-matched control-touches=5.0 | reacted/touch 0.0% vs 6.0% (-6.0pp, weekly SE n/a) | broken/touch 100.0% vs 94.0% (+6.0pp, weekly SE n/a) | reacted/selection 0.0% vs 2.7% (-2.7pp, weekly SE n/a)
+  uniform 0–3 ATR control-touches=5.3 | reacted/touch 0.0% vs 16.8% (-16.8pp, weekly SE n/a) | broken/touch 100.0% vs 56.1% (+43.9pp, weekly SE n/a) | reacted/selection 0.0% vs 8.2% (-8.2pp, weekly SE n/a)
+archive 4H closed=180 accepted-windows=13 skipped-gaps=3
+production selected=21 touches=10 reactions=4 breaks=5 unresolved=1 weeks=4
+  distance-matched control-touches=10.7 | reacted/touch 40.0% vs 43.0% (-3.0pp, weekly SE n/a) | broken/touch 50.0% vs 43.0% (+7.0pp, weekly SE n/a) | reacted/selection 19.0% vs 21.9% (-2.9pp, weekly SE n/a)
+  uniform 0–3 ATR control-touches=9.3 | reacted/touch 40.0% vs 37.6% (+2.4pp, weekly SE n/a) | broken/touch 50.0% vs 44.1% (+5.9pp, weekly SE n/a) | reacted/selection 19.0% vs 16.7% (+2.4pp, weekly SE n/a)

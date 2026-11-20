@@ -58,14 +58,26 @@ final class ZoneSelection {
         return distinct;
     }
     static List<ZoneEngine.Zone> watches(ZoneEngine.Analysis a, double price, boolean support, int count, Distance limit) {
-        if (a == null || !Market.finite(price) || price <= 0) return Collections.emptyList();
-        List<ZoneEngine.Zone> result = new ArrayList<>(a.watch(price, support, count));
+        List<ZoneEngine.Zone> result = lifecycleWatches(a, price, support, count, limit);
+        if (a == null || !Market.finite(price) || price <= 0) return result;
         if (result.isEmpty()) {
             List<ZoneEngine.Zone> references = a.nearest(price, support, 1, true);
-            if (!references.isEmpty() && references.get(0).reference) result.add(references.get(0));
+            if (!references.isEmpty() && references.get(0).reference && limit.includes(references.get(0), price, a.atr))
+                result.add(references.get(0));
         }
-        result.removeIf(z -> !limit.includes(z, price, a.atr));
         return result;
+    }
+    static List<ZoneEngine.Zone> lifecycleWatches(ZoneEngine.Analysis a, double price, boolean support, int count, Distance limit) {
+        List<ZoneEngine.Zone> watches = new ArrayList<>();
+        if (a == null || !Market.finite(price) || price <= 0) return watches;
+        for (ZoneEngine.Zone watch : a.watch(price, support, count))
+            if (limit.includes(watch, price, a.atr)) watches.add(watch);
+        return watches;
+    }
+    static ZoneEngine.Zone nearestLifecycleWatch(ZoneEngine.Analysis a, double price, Distance limit) {
+        List<ZoneEngine.Zone> watches = lifecycleWatches(a, price, true, 1, limit);
+        watches.addAll(lifecycleWatches(a, price, false, 1, limit));
+        return watches.stream().min(Comparator.comparingDouble(z -> z.distance(price))).orElse(null);
     }
     static String money(double value) { return String.format(Locale.US, "%.2f", value); }
     static String band(ZoneEngine.Zone z) { return PriceFormat.low(z.low) + "–" + PriceFormat.high(z.high); }

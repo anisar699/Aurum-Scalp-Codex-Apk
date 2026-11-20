@@ -1,43 +1,63 @@
-# Aurum Scalp 3.0.0 verification
-
-The signed APK is package `com.aurum.scalp`, version code 30. The release installed over v2.9.0 on Android 11 with the same signing certificate. Signed and installed SHA-256 matched `3d166fa13f63da189c1c7623dd590a9f0809235787c09cf77865a71a97970f9f`.
+# Aurum Scalp 3.1.0 verification
 
 ## Support and resistance research
 
-Carol Osler's New York Fed study found that published FX levels helped identify intraday trend interruptions, with results that varied by exchange rate and provider. Chung and Bellotti reported associations between previous bounces, elapsed time and later intraday reactions. These observations motivated testing repeat visits and recency on XAUUSD. [Osler](https://www.newyorkfed.org/research/epr/00v06n2/0007osle.html) · [Chung and Bellotti](https://arxiv.org/abs/2101.07410)
+The 3.0 audit identified two reproducible differences between the previous replay and the app. The fixture replay had no distance limit, and the archive ranking test included bands in **Break pending**. Both runners now use the app's confirmed selection with a fixed 3 ATR research radius and report results by selection and by touch. The app's user-selectable distance filter still applies on screen. [Previous release research](evidence/support-resistance-3.0.txt)
 
-The independent MetaTrader archive contained 465,353 validated 5m XAUUSD bars, January 2020 to August 2026. It does not specify Biquote MID prices or a verified timestamp time zone. 15m, 1H and 4H were resampled on the archive's reported clock. Buckets needed at least two thirds of their expected 5m components. The current-provider check used dated Biquote MID snapshots collected on November 20, 2026. [XAUUSD MetaTrader archive](https://www.kaggle.com/datasets/mahdimasoumian/xauusd-2020-2026) · [Biquote](https://biquote.io/docs/)
+### Six-bar reaction test
 
-Every decision reconstructed zones from the preceding closed candles, with the app's frame-specific history caps. Each side considered the nearest eligible band within three ATR. The next six consecutive candles measured a touch followed by a close 0.5 ATR clear of the band versus two adverse buffered closes. Strides kept observation windows from overlapping. The archive before 2024 was used for development. January 2024 to August 2026 and the Biquote sample were held out. The 0.35 evidence weight was picked using the development results.
+Each origin rebuilds the engine from the preceding closed bars. The nearest eligible band on each side is taken from the production selector. The next six strictly consecutive bars are used for the outcome. After the first touch, a reaction requires a later close at least 0.5 origin ATR clear of the band. Two consecutive closes beyond a buffer of max($0.05, 0.05 origin ATR) count as a break. This is a fixed research outcome. The engine itself uses a buffer from the band's seed volatility.
 
-| Holdout timeframe | Touched bands | Nearest-order reactions | Weighted reactions |
-| --- | ---: | ---: | ---: |
-| 5m | 4,691 | 2,083 | 2,086 |
-| 15m | 2,822 | 1,244 | 1,242 |
-| 1H | 618 | 271 | 271 |
-| 4H | 426 | 185 | 185 |
+For each selected band, the replay evaluates 20 seeded random bands of the same width and on the same price side in each of two controls.
 
-Weighted ranking changed 25, 13, zero and two archive holdout choices respectively, and zero choices in the recent Biquote sample. The variation did not support shipping a different ranking. The production app uses edge distance and displays defended/failed visits, time since the last response and the mean swing rejection capped at two ATR per reaction. Same-role overlap requires at least half of the smaller band and an up-to-date candle window relative to the other loaded frames.
+- The primary control samples the nearest edge within the same half-ATR distance bin. Bands containing the origin price are compared with randomized bands that also contain it.
+- The sensitivity control samples uniformly from zero to three ATR. This can change the chance that a band is reached.
 
-After a first adverse buffered close, the band moves to **Break pending** in the user interfaces and pauses approach alerts. The established two-close break and retest lifecycle continues. The tests cover evidence on both sides, interruption by a data gap, exclusion of unfinished candles, and a second close still delivering a break alert.
+Controls are averaged per selection. Lift is the percentage-point difference between the observed rate and its control. The standard error uses paired, week-level clusters to account for dependence within the same market period. With fewer than eight sampled weeks the replay omits the standard error. Both selected directions are recorded and multiple candidates use the same deterministic draws at a given origin.
 
-[Development and holdout counts](evidence/support-resistance-3.0.txt)
+### Archive results
 
-## Build and device verification
+The external MetaTrader archive has 465,353 validated 5m XAUUSD candles from January 2020 to August 2026. The clock time zone is unverified and the higher timeframes are built from the reported 5m timestamps on a nominal UTC grid. The aggregation retains buckets with at least two thirds of their expected components, so some resampled bars are partial, particularly near session boundaries. Before 2024 is the development period. January 2024 to August 2026 is the later archive check. An earlier release used the same split for a different experiment. Biquote's native timestamped MID sample is separate and short, with just 7 and 10 confirmed-band touches for 1H and 4H. Dukascopy's historical endpoint returned HTTP 429 during verification. The audit's exact Dukascopy data and harness were unavailable. [MetaTrader archive](https://www.kaggle.com/datasets/mahdimasoumian/xauusd-2020-2026) · [Biquote API](https://biquote.io/docs/)
 
-- 143 JVM unit tests, debug and release lint, and the release build passed.
-- 11 JavaScript model tests and 27 browser chart checks passed.
-- Signed Android 11 package update, Android regression checks and a live Biquote smoke test passed.
+| Timeframe | Observed touches | Confirmed reaction / touch | Distance-matched random | Lift ± weekly SE |
+| --- | ---: | ---: | ---: | ---: |
+| 5m | 4,691 | 41.6% | 42.1% | −0.5 ± 0.4 pp |
+| 15m | 2,822 | 41.3% | 41.8% | −0.5 ± 0.5 pp |
+| 1H | 618 | 39.5% | 40.2% | −0.7 ± 0.8 pp |
+| 4H | 426 | 39.7% | 39.4% | +0.3 ± 1.2 pp |
 
-```text
-PASS: 12 Android biquote/feed checks; 12 repository/chart audit checks; 19 monitoring/notification/UI checks; 18 advanced chart checks; 14 deep-debug regression checks; 9 real-provider checks
-```
+Confirmed bands had no clear reaction advantage over the matched control. Their break rate was usually higher than the uniform control, with a much smaller difference after matching distance. Five-bar swing wings at 0.5, 0.75 and 1.0 ATR rejection, and the 0.75 ATR variant with a 0.25 ATR recency credit that halves every 24 bars, did not establish an advantage. Using the shorter typical first-sync histories gave a similar result. The release keeps the current production detection and edge ordering. Same-role overlap continues to describe where frames agree.
 
-The external archive is required only to reproduce the developer-side comparison. Its ZIP SHA-256 is `483117c86229009a09d92facb8095667d9be8f14d2ccb02fa8d10f05b2a523ea`.
+### Watch areas
+
+A separate location test compares nearby turns for confirmed swings, break-pending bands and retest watches as distinct groups. Its non-overlapping future windows use 72, 64, 48 and 24 bars on 5m, 15m, 1H and 4H. A turn is a future five-wing high or low within 0.3 origin ATR of a touched band. The wings must be continuously observed under the engine's session-gap rules. This is a per-band turn-location test with the same controls, rather than the audit's all-band turn-capture test.
+
+The 1H retest watches had +1.5 percentage points of turn lift (weekly SE 1.2) and +1.6 percentage points of directional reaction lift (SE 1.1). Results varied by timeframe. The 4H break-pending turn result used only 13 touched bands. Market, Scalp View and the advanced chart now show the nearest lifecycle watch alongside confirmed zones. All Zones places break and retest watches first. The one-close pending state and two-close break/retest requirements still govern alert eligibility. Reaction counts, visit outcomes and rejection size are shown as historical observations.
+
+[Detailed development, later-period, Biquote and first-sync output](evidence/support-resistance-3.1.txt) · [Fixture integration output](evidence/zone-replay.txt)
+
+### Reproduce the checks
+
+The external archive ZIP SHA-256 is `483117c86229009a09d92facb8095667d9be8f14d2ccb02fa8d10f05b2a523ea`. To include native Biquote data, supply `--biquote` with a directory containing 5m, 15m, 1h and 4h JSON responses with the HTTP Date in the `_asOf` field.
 
 ```sh
+python3 tests/replay/run.py
 python3 tests/replay/compare_strength.py XAUUSD-archive.zip --split development
-python3 tests/replay/compare_strength.py XAUUSD-archive.zip --split holdout --weights 0,0.35
+python3 tests/replay/compare_strength.py XAUUSD-archive.zip --split holdout
+python3 tests/replay/compare_strength.py XAUUSD-archive.zip --split holdout --first-sync
 ```
 
-A physical Android 14/15 long-run monitoring test was outside this release's verification. [Previous Android verification](https://github.com/anisar699/Aurum-Scalp-Codex-Apk/blob/57a44bd/docs/VERIFICATION.md)
+## Build and signing
+
+- Gradle release build, debug and release lint, and 144 JVM unit tests passed.
+- 11 JavaScript chart model tests, 28 browser integration checks, and the fixture replay passed.
+- The signed release is package `com.aurum.scalp`, version code 31. The signing certificate matches v3.0.0.
+- Signed APK SHA-256 `ec1fc8ae54e220ba05bbd4f2468e66b359894d2b548547ac2243bbac47d79dce`.
+
+## Android 11 emulator
+
+The signed APK updated the installed 3.0.0 package in place. The installed package SHA-256 matched the delivered APK. After an initial chart timeout on the emulator, the final run passed all 76 deterministic Android checks, including the new Scalp View watch regression, and all nine live Biquote checks.
+
+```text
+PASS: 12 Android biquote/feed checks; 12 repository/chart audit checks; 20 monitoring/notification/UI checks; 18 advanced chart checks; 14 deep-debug regression checks; 9 real-provider checks
+```

@@ -1,4 +1,4 @@
-"""Compare Aurum rankings on an external M5 OHLC archive and optional Biquote snapshots."""
+"""Compare Aurum pivot definitions with matched random controls on an external M5 OHLC archive and optional Biquote snapshots."""
 import argparse
 import csv
 from datetime import datetime, timezone
@@ -17,7 +17,8 @@ NATIVE = APP / 'app/src/main/java/com/aurum/scalp'
 FRAMES = {'M5': ('5m', 5, 720, 36), 'M15': ('15m', 15, 480, 18),
           'H1': ('1h', 60, 1000, 12), 'H4': ('4h', 240, 360, 6)}
 SPLIT = datetime(2024, 1, 1, tzinfo=timezone.utc).timestamp()
-FILES = ['Market', 'ZoneEngine', 'ZoneVisits', 'MarketClock']
+FILES = ['Market', 'ZoneEngine', 'ZoneVisits', 'MarketClock', 'ZoneSelection', 'PriceFormat']
+FIRST_SYNC_DEPTH = {'M5': 288, 'M15': 192, 'H1': 168, 'H4': 180}
 
 
 def market_archive(path):
@@ -74,13 +75,16 @@ def run_slices(args, folder):
     javac = str(Path(java_home) / 'bin/javac') if java_home else 'javac'
     java = str(Path(java_home) / 'bin/java') if java_home else 'java'
     subprocess.run([javac, '-d', str(folder), str(Path(__file__).with_name('CompareStrength.java')),
+                    str(Path(__file__).with_name('ReactionReplay.java')),
                     *[str(NATIVE / (name + '.java')) for name in FILES]], check=True)
     start, stop = (0, SPLIT) if args.split == 'development' else (SPLIT, 2_000_000_000)
     for frame, (_, _, depth, stride) in FRAMES.items():
+        if args.first_sync:
+            depth = FIRST_SYNC_DEPTH[frame]
         print(args.split + ' archive ', end='', flush=True)
         subprocess.run([java, '-Xmx512m', '-cp', str(folder), 'com.aurum.scalp.CompareStrength', frame,
                         str(int(start * 1000)), str(int(stop * 1000)), str(stride), str(depth),
-                        str(files[frame]), args.weights], check=True)
+                        str(files[frame])], check=True)
     if args.biquote:
         for frame, (name, minutes, depth, _) in FRAMES.items():
             f = folder / (frame + '-bq.csv')
@@ -88,7 +92,7 @@ def run_slices(args, folder):
             f.write_text(''.join(','.join(map(str, (t*1000, *bar))) + '\n' for t, bar in rows))
             print('Biquote MID holdout ', end='', flush=True)
             subprocess.run([java, '-Xmx256m', '-cp', str(folder), 'com.aurum.scalp.CompareStrength', frame,
-                            '0', '2000000000000', '6', str(depth), str(f), args.weights], check=True)
+                            '0', '2000000000000', '6', str(depth), str(f)], check=True)
 
 
 if __name__ == '__main__':
@@ -96,6 +100,6 @@ if __name__ == '__main__':
     parser.add_argument('archive', type=Path)
     parser.add_argument('--split', choices=['development', 'holdout'], required=True)
     parser.add_argument('--biquote', type=Path)
-    parser.add_argument('--weights', default='0,0.35,0.65,1.0')
+    parser.add_argument('--first-sync', action='store_true', help='Use typical first-install history depths in the archive comparison')
     with tempfile.TemporaryDirectory(prefix='aurum-strength-') as temp:
         run_slices(parser.parse_args(), Path(temp))

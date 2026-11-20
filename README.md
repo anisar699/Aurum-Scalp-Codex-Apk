@@ -1,13 +1,13 @@
 # Aurum Scalp
 
-Aurum Scalp is a native Android app for watching XAU/USD support and resistance with live gold prices. It combines short-term execution context on 5m and 15m with market structure on 1H and 4H. Version **3.0.0** uses Android package `com.aurum.scalp` and runs on Android 8.0 (API 26) and later.
+Aurum Scalp is a native Android app for watching XAU/USD support and resistance with live gold prices. It combines short-term execution context on 5m and 15m with market structure on 1H and 4H. Version **3.1.0** uses Android package `com.aurum.scalp` and runs on Android 8.0 (API 26) and later.
 
 ## Use the app
 
 | Where | What you can do |
 | --- | --- |
-| **Market → Scalp View** | See the nearest confirmed bands on 5m, 15m, 1H and 4H alongside the bid/ask spread and 5m volatility. Tap **Structure** for the higher-timeframe view. |
-| **All zones → Distance filter** | Limit zones by USD from the nearest edge or by a multiple of the timeframe's ATR. Confirmed zones, watch areas and wider structure each have their own section. Tap a band for its width, independent swing reactions, defended and failed visits, last reaction, and distance. |
+| **Market → Scalp View** | See the nearest break or retest watch and the confirmed bands on 5m, 15m, 1H and 4H alongside the spread and 5m volatility. Tap **Structure** for the higher-timeframe view. |
+| **All zones → Distance filter** | Limit zones by USD from the nearest edge or by a multiple of the timeframe's ATR. Break and retest watches appear first, followed by confirmed zones, range references and wider structure. Tap a band for its width, independent swing reactions, defended and failed visits, last reaction, and distance. |
 | **Chart** | Follow the selected timeframe. Use **Focus price** to fit the latest 45 candles and **Latest** to restore the default 100-candle view. **Layers** controls 1H/4H context, EMA50/200, forming candles and nearby zones. Tap a band or its label for details. |
 | **Analysis** | Read the selected timeframe first. Swing structure, EMA/ADX trend, range and volatility have independent labels. |
 | **Health** | Check quote age, last closed candle, last successful history fetch, provider backoff, available history and per-timeframe alert readiness. |
@@ -26,11 +26,11 @@ Biquote provides anonymous XAU/USD quotes, a SignalR stream and REST history. Th
 
 ### Support and resistance evidence
 
-Aurum measures independent swing reactions and observes visits to an existing band after price has first moved away. A defended visit comes back from the valid side and closes at least 0.25 ATR clear of the near edge within three bars of the touch. A failed visit closes past the opposite edge and buffer. The counters can describe the same price move and are presented separately.
+Aurum measures independent swing reactions and observes visits to an existing band after price has first moved away. A defended visit comes back from the valid side and closes at least 0.25 ATR clear of the near edge within three bars of the touch. A failed visit closes past the opposite edge and buffer. The counters are historical observations. A swing reaction and a visit may describe the same move.
 
-After one buffered adverse close the band is shown as **Break pending** and its approach alerts pause. The second qualifying closed candle confirms the break. The Chart, Scalp View and All Zones distinguish these bands from confirmed support and resistance. The status notification uses an exclamation mark for a pending band.
+After one buffered adverse close the band is shown as **Break pending** and its approach alerts pause. The second qualifying closed candle confirms the break. Market, Scalp View and Chart show the nearest break or retest watch alongside the confirmed areas. All Zones places break and retest watches first. The status notification uses an exclamation mark for a pending band.
 
-The release compared nearest-by-edge ordering with an experimental evidence-weighted ordering across 465,353 archived XAUUSD M5 candles and a separate Biquote sample. The holdout did not show a consistent ranking advantage. [Method and results](docs/VERIFICATION.md#support-and-resistance-research)
+The replay compares bands with random bands of the same width and similar distance from price. Five-candle swing wings, stronger rejection filters and a recency adjustment were tested offline. The holdout did not establish a consistent improvement. [Method and results](docs/VERIFICATION.md#support-and-resistance-research)
 
 Zone analysis uses valid provider-confirmed closed candles. Swing confirmation waits for right-side closes, zone clustering limits width, and watch areas identify unconfirmed references or zones awaiting a retest. The chart can separately show forming or pending previews from the feed. EMA overlays use confirmed closes and appear only when enough history is available. The renderer uses bundled TradingView Lightweight Charts. [Third-party components](docs/THIRD_PARTY.md)
 
@@ -56,7 +56,7 @@ node --test tests/chart.test.cjs
 python3 tests/replay/run.py
 ```
 
-The replay uses the checked-in test fixtures. Add `--live` to sample current provider history. It measures zone coverage and reactions over later closed bars. Browser integration checks use Python Playwright and Chromium via `python3 tests/browser_qa.py`.
+The replay uses the checked-in test fixtures. Add `--live` to sample current provider history. It checks eligibility, touch and reaction scoring against seeded random controls. The small fixtures are for integration checks. Browser integration checks use Python Playwright and Chromium via `python3 tests/browser_qa.py`.
 
 For Android instrumentation, install the debug app and its matching debug test APK, then run:
 

@@ -108,6 +108,8 @@ final class MonitorChecks {
                 &&hasNotification(c,MonitorNotifications.SUMMARY_ID),"Both recent events and group summary remain visible");checks++;
             cancelAlerts(c);
             // A notification starts the correct timeframe in the activity.
+            bid.set(4000);
+            i.runOnMainSync(()->injected.quote=new Market.Quote(injected.marketNow()-500,4000,4000.5));
             Activity activity=i.startActivitySync(new Intent(c,MainActivity.class).setAction(Intent.ACTION_MAIN).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("alert-frame","H4"));
             AtomicReference<Throwable> failure=new AtomicReference<>();
             i.runOnMainSync(()->{try{
@@ -116,6 +118,8 @@ final class MonitorChecks {
                 android.widget.TextView scalp=text(root,"Scalp View");check(scalp!=null&&scalp.performClick(),"Scalp View opens from Market");
                 for(String tf:new String[]{"5m","15m","1H","4H"})check(text(root,"Open "+tf+" chart")!=null,"Scalp View exposes "+tf);
                 check(text(root,"Open 1m chart")==null&&text(root,"Distance filter · All distances")!=null,"Four scalp rows and distance filter");
+                android.widget.TextView watch=text(root,"Retest watch · potential resistance 4005.00–4006.00 · $4.75 from edge");
+                check(watch!=null&&watch.getVisibility()==android.view.View.VISIBLE,"Scalp View shows a nearby retest even when confirmed resistance is available");
                 ZoneEngine.Zone pin=loaded.get(Market.Frame.H4).zones.get(0);
                 String pinFixtureName="pins-test-"+System.nanoTime();
                 android.content.SharedPreferences isolatedPins=c.getSharedPreferences(pinFixtureName,Context.MODE_PRIVATE);
@@ -128,7 +132,7 @@ final class MonitorChecks {
                 java.lang.reflect.Field scroll=MainActivity.class.getDeclaredField("scroll");scroll.setAccessible(true);android.widget.ScrollView view=(android.widget.ScrollView)scroll.get(activity);android.view.View child=view.getChildAt(0);view.scrollTo(0,400);Object first=((android.view.ViewGroup)child).getChildAt(0);ref.get().refreshState();check(first==((android.view.ViewGroup)child).getChildAt(0),"Health update preserves existing views and accessibility focus targets");
                 activity.finish();
             }catch(Throwable e){failure.set(e);}});
-            if(failure.get()!=null)throw new AssertionError(failure.get());checks+=4;
+            if(failure.get()!=null)throw new AssertionError(failure.get());checks+=5;
         }finally{
             i.runOnMainSync(()->{c.stopService(new Intent(c,MonitoringService.class));MonitorRuntime r=ref.get();if(r!=null){r.detach(viewer);r.background(false);injected.stop();r.repository=original.get();r.refreshState();}});
             cancelAlerts(c);

@@ -29,11 +29,18 @@
  function overlays(){bands=(payload.bands||[]).filter(b=>b.macro?payload.contextOn:payload.zonesOn);const key=JSON.stringify(bands.map(b=>[b.id,b.low,b.high,b.price,b.title,b.watch,b.macro]));
   if(key!==bandKey){bandKey=key;for(const it of lines)series.removePriceLine(it.line);lines=bands.map(b=>({id:b.id,band:b,line:series.createPriceLine({price:b.price,color:color(b),lineVisible:false,axisLabelVisible:false,title:''})}));}
   else lines.forEach((it,i)=>it.band=bands[i]);
-  const nearest=[true,false].map(side=>bands.filter(b=>b.support===side).sort((a,b)=>(a.macro-b.macro)||(a.watch-b.watch)||Core.distance(a,payload.price)-Core.distance(b,payload.price))[0]).filter(Boolean);
+  const byEdge=(a,b)=>Core.distance(a,payload.price)-Core.distance(b,payload.price);
+  const local=bands.filter(b=>!b.macro);
+  const watch=local.filter(b=>b.pendingBreak||b.retestWatch).sort(byEdge)[0];
+  const byRole=(a,b)=>(a.macro-b.macro)||(a.watch-b.watch)||byEdge(a,b);
+  const nearest=[watch,...[true,false].map(side=>{
+   const confirmed=local.filter(b=>b.support===side&&!b.watch).sort(byEdge)[0];
+   return confirmed||(watch?.support===side?null:bands.filter(b=>b.support===side).sort(byRole)[0]);
+  })].filter(Boolean);
   const key2=JSON.stringify(nearest.map(b=>[b.id,b.low,b.high,b.title]));
   if(key2!==zoneInfoKey){
    zoneInfoKey=key2;const info=document.getElementById('zone-info');while(info.firstChild)info.removeChild(info.firstChild);
-   for(const zone of nearest){const item=document.createElement('button');item.type='button';item.textContent=`${zone.title} ${zone.low.toFixed(2)}–${zone.high.toFixed(2)}`;item.addEventListener('click',()=>toggleZone(zone.id));info.appendChild(item);}
+   for(const zone of nearest){const item=document.createElement('button');item.type='button';if(zone.watch)item.className='watch';item.textContent=`${zone.title} ${zone.low.toFixed(2)}–${zone.high.toFixed(2)}`;item.addEventListener('click',()=>toggleZone(zone.id));info.appendChild(item);}
   }
   zoneDetail();
   if(primitive.request)primitive.request();schedule();}
@@ -43,7 +50,7 @@
   panel.hidden=!band;
   if(!band){panel.textContent='';return;}
   const distance=Core.distance(band,payload.price);
-  const evidence=band.pendingBreak?'Break pending · one adverse close':band.watch?'Unconfirmed · watch area':(band.tests||0)+' confirmed reactions'
+  const evidence=band.pendingBreak?'Break pending · one adverse close':band.retestWatch?'Retest watch · new role unconfirmed':band.watch?'Observed range extreme · unconfirmed':(band.tests||0)+' past swing reactions'
     +(band.defendedVisits==null?'':' · '+band.defendedVisits+' defended / '+band.failedVisits+' failed visits');
   const text=`${band.title} ${band.low.toFixed(2)}–${band.high.toFixed(2)} · ${evidence} · ${distance===0?'Reference inside':'$'+distance.toFixed(2)+' from edge'}`
     +(band.reaction?' · last reaction '+band.reaction+' UTC':'')+(band.freshness?' · '+band.freshness:'');

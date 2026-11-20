@@ -33,6 +33,22 @@ public class ZoneEngineTest {
         ZoneEngine.Analysis a=new ZoneEngine.Analysis(f,Collections.emptyList(),Collections.singletonList(active),Collections.singletonList(watch),20,1,"Mixed");
         assertTrue(a.nearest(4000,true,1,true).get(0).retestWatch);assertFalse(a.nearest(4000,true,1,false).get(0).reference);assertEquals(0,watch.tests);assertEquals("",ZoneEngine.context(watch,Collections.singletonList(a)));
     }
+    @Test public void lifecycleSummaryTracksPendingThenRetestWithoutPromotingEither(){
+        Market.Frame f=Market.Frame.M5;
+        List<Market.Candle> bars=waves(f,80);
+        append(bars,f,3990);
+        ZoneEngine.Analysis pending=analyse(bars,f);
+        ZoneEngine.Zone watch=ZoneSelection.nearestLifecycleWatch(pending,3990,ZoneSelection.Distance.ALL);
+        assertNotNull(watch);
+        assertTrue(watch.reference&&watch.breakPending&&watch.support);
+        assertNull(ZoneSelection.nearestLifecycleWatch(pending,3990,new ZoneSelection.Distance(ZoneSelection.Unit.USD,1)));
+        assertTrue(ZoneSelection.confirmed(pending,3994,true,3,ZoneSelection.Distance.ALL).stream().noneMatch(z->z.id.equals(watch.id)));
+        append(bars,f,3989);
+        ZoneEngine.Zone retest=ZoneSelection.nearestLifecycleWatch(analyse(bars,f),3989,ZoneSelection.Distance.ALL);
+        assertNotNull(retest);
+        assertEquals(watch.id,retest.id);
+        assertTrue(retest.reference&&retest.retestWatch&&!retest.support);
+    }
     private static List<Market.Candle> overnight(boolean unexpectedHole){
         long start=java.time.Instant.parse("2026-11-09T00:00:00Z").toEpochMilli(),end=java.time.Instant.parse("2026-11-11T02:00:00Z").toEpochMilli(),spike=java.time.Instant.parse("2026-11-10T21:00:00Z").toEpochMilli();List<Market.Candle> b=new ArrayList<>();
         for(long t=start;t<end;t+=Market.Frame.H1.duration()){int h=java.time.Instant.ofEpochMilli(t).atZone(java.time.ZoneOffset.UTC).getHour();if(h==22||(unexpectedHole&&t==spike-Market.Frame.H1.duration()))continue;b.add(new Market.Candle(t,4000,t==spike?4050:4001,3999,4000));}return b;

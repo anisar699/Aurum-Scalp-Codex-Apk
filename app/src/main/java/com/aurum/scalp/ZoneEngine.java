@@ -39,7 +39,7 @@ public final class ZoneEngine {
         public boolean contains(double p){return p>=low&&p<=high;}
         public double distance(double p){return Math.max(0,Math.max(low-p,p-high));}
         public boolean validSide(double p){return support?p>=low:p<=high;}
-        public String evidence(){return breakPending?"Break pending":reference?(retestWatch?"Retest needed":"Unconfirmed"):tests>=3?"Repeated":tests==2?"Retested":"Confirmed swing";}
+        public String evidence(){return breakPending?"Break pending":reference?(retestWatch?"Retest needed":"Unconfirmed"):"Confirmed swing";}
     }
     public enum EventKind { BREAK, RETEST_HELD, RETEST_FAILED }
     public static final class Event {
@@ -166,9 +166,12 @@ public final class ZoneEngine {
         }return true;
     }
     public static Analysis calculate(List<Market.Candle> input,Market.Frame frame,long now){
+        return calculate(input,frame,now,frame.wing,.25);
+    }
+    static Analysis calculate(List<Market.Candle> input,Market.Frame frame,long now,int wing,double minimumRejectionAtr){
         List<Market.Candle> bars=Market.closed(input,frame.duration(),now);double[] atr=atrSeries(bars,frame.duration());int n=bars.size();
         if(n<40)return new Analysis(frame,bars,Collections.emptyList(),Collections.emptyList(),n==0?0:atr[n-1],0,"Insufficient closed history");
-        int minPivot=Math.max(frame.wing,n-frame.lookback),start=minPivot+frame.wing,broken=0;List<Working> work=new ArrayList<>();List<Pivot> events=new ArrayList<>();List<Event> lifecycle=new ArrayList<>();
+        int minPivot=Math.max(wing,n-frame.lookback),start=minPivot+wing,broken=0;List<Working> work=new ArrayList<>();List<Pivot> events=new ArrayList<>();List<Event> lifecycle=new ArrayList<>();
         for(int j=start;j<n;j++){
             Market.Candle current=bars.get(j);
             Market.Candle previous=bars.get(j-1);
@@ -187,16 +190,16 @@ public final class ZoneEngine {
                 if(reclaimed){if(!continuous(bars,j-1,j,frame.duration()))z.breaks=0;if(++z.breaks>=2){lifecycle.add(new Event(EventKind.RETEST_FAILED,snapshot(z,frame,bars,true,j),Market.closeTime(current,frame.duration())));z.breakAt=-1;z.breaks=0;}}
                 else z.breaks=0;
             }
-            int i=j-frame.wing;
-            if(i<minPivot||!continuous(bars,i-frame.wing,j,frame.duration())||atr[i]<=0)continue;
+            int i=j-wing;
+            if(i<minPivot||!continuous(bars,i-wing,j,frame.duration())||atr[i]<=0)continue;
             Market.Candle p=bars.get(i);boolean hi=true,lo=true;double rightHigh=p.close,rightLow=p.close;
-            for(int k=1;k<=frame.wing;k++){
+            for(int k=1;k<=wing;k++){
                 hi&=p.high>=bars.get(i-k).high&&p.high>bars.get(i+k).high;
                 lo&=p.low<=bars.get(i-k).low&&p.low<bars.get(i+k).low;
                 rightHigh=Math.max(rightHigh,bars.get(i+k).close);rightLow=Math.min(rightLow,bars.get(i+k).close);
             }
-            if(hi&&(p.high-rightLow)/atr[i]>=.25){Pivot pivot=new Pivot(i,p.high,atr[i],false,(p.high-rightLow)/atr[i]);events.add(pivot);register(pivot,j,work,bars,atr,frame,lifecycle);}
-            if(lo&&(rightHigh-p.low)/atr[i]>=.25){Pivot pivot=new Pivot(i,p.low,atr[i],true,(rightHigh-p.low)/atr[i]);events.add(pivot);register(pivot,j,work,bars,atr,frame,lifecycle);}
+            if(hi&&(p.high-rightLow)/atr[i]>=minimumRejectionAtr){Pivot pivot=new Pivot(i,p.high,atr[i],false,(p.high-rightLow)/atr[i]);events.add(pivot);register(pivot,j,work,bars,atr,frame,wing,lifecycle);}
+            if(lo&&(rightHigh-p.low)/atr[i]>=minimumRejectionAtr){Pivot pivot=new Pivot(i,p.low,atr[i],true,(rightHigh-p.low)/atr[i]);events.add(pivot);register(pivot,j,work,bars,atr,frame,wing,lifecycle);}
         }
         List<Zone> zones=new ArrayList<>(),watchZones=new ArrayList<>();
         for(Working z:work)if(z.active&&z.tests>0&&n-1-z.lastPivot<=frame.lookback){
@@ -213,7 +216,7 @@ public final class ZoneEngine {
         }
         return new Analysis(frame,bars,zones,watchZones,atr[n-1],broken,structure,lifecycle);
     }
-    private static void register(Pivot p,int j,List<Working> work,List<Market.Candle> bars,double[] atr,Market.Frame frame,List<Event> lifecycle){
+    private static void register(Pivot p,int j,List<Working> work,List<Market.Candle> bars,double[] atr,Market.Frame frame,int wing,List<Event> lifecycle){
         Working best=null;double distance=Double.MAX_VALUE;
         for(Working z:work){
             if(!z.fits(p))continue;
@@ -224,7 +227,7 @@ public final class ZoneEngine {
         }
         if(best==null){work.add(new Working(p,j,frame,bars,atr));return;}
         if(best.active){
-            if(p.index-best.lastPivot>=frame.wing+1&&best.departed&&best.departureAt<p.index){best.tests++;best.add(p,j,bars,atr);}
+            if(p.index-best.lastPivot>=wing+1&&best.departed&&best.departureAt<p.index){best.tests++;best.add(p,j,bars,atr);}
         }else{
             best.everFlipped=true;best.support=p.support;best.active=true;best.tests=1;best.visits.reset();best.rejectionTotal=0;best.breakAt=-1;best.add(p,j,bars,atr);lifecycle.add(new Event(EventKind.RETEST_HELD,snapshot(best,frame,bars,false,j),Market.closeTime(bars.get(j),frame.duration())));
         }

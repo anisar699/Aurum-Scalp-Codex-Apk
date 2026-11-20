@@ -21,7 +21,7 @@ final class ChartPayload {
         for(boolean side:new boolean[]{true,false}){
             List<ZoneEngine.Zone> candidates=a.nearest(price,side,macro?2:4,false);candidates.addAll(ZoneSelection.watches(a,price,side,macro?1:2,ZoneSelection.Distance.ALL));Map<String,ZoneEngine.Zone> unique=new LinkedHashMap<>();for(ZoneEngine.Zone z:candidates)unique.put(z.id+":"+z.support,z);List<ZoneEngine.Zone> list=new ArrayList<>(unique.values());
             for(ZoneEngine.Zone z:list)out.put(new JSONObject().put("id",z.id+":"+z.support+":"+macro).put("low",z.low).put("high",z.high).put("price",z.center).put("support",z.support).put("watch",z.reference).put("macro",macro).put("title",a.frame.label+" "+(z.support?"S":"R")+(z.reference?(z.breakPending?" pending":z.retestWatch?" watch":" range"):"")).put("tests",z.tests).put("defendedVisits",z.defendedVisits).put("failedVisits",z.failedVisits)
-                .put("pendingBreak",z.breakPending).put("rejectionAtr",z.rejectionAtr).put("reaction",DataFreshness.date(z.lastTest)).put("freshness",DataFreshness.summary(a,now,synced.getOrDefault(a.frame,0L),quote)).put("priority",(macro?0:1000)+100/(1+z.distance(price)/Math.max(.01,a.atr))));
+                .put("pendingBreak",z.breakPending).put("retestWatch",z.retestWatch).put("rejectionAtr",z.rejectionAtr).put("reaction",DataFreshness.date(z.lastTest)).put("freshness",DataFreshness.summary(a,now,synced.getOrDefault(a.frame,0L),quote)).put("priority",(macro?0:1000)+100/(1+z.distance(price)/Math.max(.01,a.atr))));
         }
     }
 }
