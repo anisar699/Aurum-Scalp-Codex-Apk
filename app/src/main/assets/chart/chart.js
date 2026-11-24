@@ -58,11 +58,12 @@
  }
  function render(p){
   restoring=true;try{
-  const changedFrame=frame!==p.frameKey;if(changedFrame){closed=[];selected=null;selectedPrice=null;activeZone=null;zoneInfoKey='';emaKey='';chart.clearCrosshairPosition();}if(p.history)closed=Core.rows(p.history);
+  const changedFrame=frame!==p.frameKey;if(changedFrame){closed=[];selected=null;selectedPrice=null;activeZone=null;zoneInfoKey='';emaKey='';chart.clearCrosshairPosition();}
+  const hadHistory=closed.length>0;if(p.history)closed=Core.rows(p.history);
   const next=Core.combine(closed,p.forming,p.liveOn);const old=bars;const range=changedFrame?null:chart.timeScale().getVisibleLogicalRange();payload=p;frame=p.frameKey;
   if(!changedFrame&&Core.incremental(old,next)){for(let i=Math.max(0,old.length-1);i<next.length;i++)series.update(painted(next[i]));}
   else series.setData(next.map(painted));bars=next;
-  if(changedFrame&&bars.length){chart.timeScale().setVisibleLogicalRange({from:Math.max(0,bars.length-(focusMode?45:100)),to:bars.length+6});chart.priceScale('right').applyOptions({autoScale:true});}
+  if(bars.length&&(changedFrame||!old.length||!hadHistory&&closed.length))positionLatest();
   else{const restored=Core.range(old,next,range);if(restored)chart.timeScale().setVisibleLogicalRange(restored);}
   const key=String(p.emaOn)+p.frameKey;if(p.history||key!==emaKey){emaKey=key;ema50.setData(p.emaOn?Core.ema(closed,50):[]);ema200.setData(p.emaOn?Core.ema(closed,200):[]);}
   const staleness=p.historyStatus?' · '+p.historyStatus:p.historyFresh?'':' · historical/time unverified';status.textContent=`${p.state} · ${p.referenceLabel||'MID'}${focusMode?' · Focus price':''} · ${p.count} closed bars${p.limited?' · limited history':''}${staleness}${p.emaOn&&closed.length<200?' · EMA200 needs 200 closed bars':''}`;
@@ -81,11 +82,14 @@
   const band=Core.pickBand(bands,price,Math.abs(price-other));
   if(band)toggleZone(band.id);else if(activeZone){activeZone=null;zoneDetail();}
  });
+ function positionLatest(){
+  if(bars.length)chart.timeScale().setVisibleLogicalRange({from:Math.max(0,bars.length-(focusMode?45:100)),to:bars.length+6});
+  chart.priceScale('right').applyOptions({autoScale:true});
+ }
  function resetView(focus){
   focusMode=focus;selected=null;selectedPrice=null;activeZone=null;chart.clearCrosshairPosition();
   if(payload.frame)render(payload);else detail();
-  if(bars.length)chart.timeScale().setVisibleLogicalRange({from:Math.max(0,bars.length-(focus?45:100)),to:bars.length+6});
-  chart.priceScale('right').applyOptions({autoScale:true});
+  positionLatest();
  }
  root.AurumChart={render,latest:()=>resetView(false),focusPrice:()=>resetView(true),inspect(){return {bars:bars.map(b=>({...b})),closedCount:closed.length,selected,selectedPrice,activeZone,focusMode,frame,range:chart.timeScale().getVisibleLogicalRange(),bands:bands.map(b=>({low:b.low,high:b.high,id:b.id})),labelCount:lines.filter(it=>it.line.options().axisLabelVisible).length,ema50:ema50.data().length,ema200:ema200.data().length};}};
 })(typeof window!=='undefined'?window:globalThis);

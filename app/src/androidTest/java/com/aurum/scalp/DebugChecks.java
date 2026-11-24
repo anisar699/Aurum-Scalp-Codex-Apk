@@ -5,10 +5,18 @@ final class DebugChecks {
  private static void check(boolean b,String s){if(!b)throw new AssertionError(s);}
  private static Field field(Class<?> c,String n)throws Exception{Field f=c.getDeclaredField(n);f.setAccessible(true);return f;}
  private static JSONObject q(long t,double price,String state)throws Exception{JSONObject j=new JSONObject().put("symbol","XAUUSD").put("timestamp",java.time.Instant.ofEpochMilli(t).toString()).put("bid",price-.1).put("ask",price+.1);if(state!=null)j.put("marketState",state);return j;}
- private static void manualQuote(MarketRepository repo,Method fetch,Object session)throws Exception {
+ private static void allowManualRequest(MarketRepository repo)throws Exception {
   PollPolicy policy=(PollPolicy)field(MarketRepository.class,"policy").get(repo);
   ((Map<?,?>)field(PollPolicy.class,"manualDue").get(policy)).clear();
+ }
+ private static void manualQuote(MarketRepository repo,Method fetch,Object session)throws Exception {
+  allowManualRequest(repo);
   fetch.invoke(repo,session,true);
+ }
+ private static String historyPacket(Market.Frame frame,Market.Candle candle,boolean open)throws JSONException {
+  JSONObject row=new JSONObject().put("openTime",java.time.Instant.ofEpochMilli(candle.time).toString())
+      .put("open",candle.open).put("high",candle.high).put("low",candle.low).put("close",candle.close).put("isOpen",open);
+  return new JSONObject().put("symbol","XAUUSD").put("interval",BiquoteCodec.interval(frame)).put("bars",new JSONArray().put(row)).toString();
  }
  static int run(Instrumentation i)throws Exception{
   Context c=i.getTargetContext();File dir=new File(c.getCacheDir(),"debug-check-"+System.nanoTime());check(dir.mkdirs(),"Isolated debug cache");Context isolated=new ContextWrapper(c){@Override public File getFilesDir(){return dir;}};
@@ -27,7 +35,34 @@ final class DebugChecks {
    two.state(false);response.set(q(now,4004,"open").toString());during.set(()->two.state(true));manualQuote(repo,fetch,session);check(repo.quote.marketClosed,"In-flight old REST state cannot undo a newer stream state");during.set(null);count++;
    two.state(true);response.set(q(now,4004,"closed").toString());during.set(()->two.state(false));manualQuote(repo,fetch,session);during.set(null);PollPolicy poll=(PollPolicy)field(MarketRepository.class,"policy").get(repo);java.util.Map<?,?> due=(java.util.Map<?,?>)field(PollPolicy.class,"due").get(poll);check(!repo.quote.marketClosed&&((Long)due.get("quote"))-SystemClock.elapsedRealtime()<=15000,"Opening during an old closed REST response schedules the open-market fallback interval");count++;
    two.state(false);repo.quote=new Market.Quote(now+86400000,5000,5000.2);two.tick(q(now,4005,null));check(repo.quote.mid()==4005,"Valid current stream replaces an invalid future cached quote");count++;
+   repo.quoteOnline=false;
+   response.set(q(now-5_000,3900,null).toString());
+   manualQuote(repo,fetch,session);
+   check(!repo.quoteOnline&&repo.quote.mid()==4005,"Older REST response does not verify a newer saved quote");count++;
+   response.set(q(now,4006,null).toString());
+   manualQuote(repo,fetch,session);
+   check(repo.quoteOnline&&repo.quote.mid()==4006,"Matching-timestamp REST can verify a saved quote before the first stream tick");count++;
    long bucket=now/Market.Frame.H1.duration()*Market.Frame.H1.duration();List<Market.Candle> bars=new ArrayList<>();for(int n=80;n>0;n--)bars.add(new Market.Candle(bucket-n*3600000,4000,4002,3990,4000));
+   Market.Frame historyFrame=Market.Frame.H1;
+   List<Market.Candle> minimal=List.copyOf(bars.subList(40,80));
+   repo.candles=Map.of(historyFrame,minimal);
+   repo.analyses=Map.of(historyFrame,ZoneEngine.calculate(minimal,historyFrame,now));
+   repo.liveSynced=Map.of(historyFrame,now);
+   Method history=MarketRepository.class.getDeclaredMethod("fetchHistory",sessionClass,Market.Frame.class,boolean.class);history.setAccessible(true);
+   Market.Candle last=bars.get(79);
+   response.set(historyPacket(historyFrame,bars.get(78),false));
+   allowManualRequest(repo);history.invoke(repo,session,historyFrame,true);
+   check(repo.errors.containsKey(historyFrame)&&!repo.liveSynced.containsKey(historyFrame)
+       &&repo.candles.get(historyFrame).get(39).time==last.time,"Old REST history cannot re-verify a newer saved close");count++;
+   response.set(historyPacket(historyFrame,last,true));
+   allowManualRequest(repo);history.invoke(repo,session,historyFrame,true);
+   check(!repo.liveSynced.containsKey(historyFrame)&&repo.analyses.get(historyFrame).candles.size()==39
+       &&DataFreshness.lastClose(repo.analyses.get(historyFrame))==bucket-historyFrame.duration(),
+       "Provider withdrawal removes the candle even when history drops below the analysis minimum");count++;
+   response.set(historyPacket(historyFrame,last,false));
+   allowManualRequest(repo);history.invoke(repo,session,historyFrame,true);
+   check(repo.liveSynced.containsKey(historyFrame)&&!repo.errors.containsKey(historyFrame)
+       &&DataFreshness.lastClose(repo.analyses.get(historyFrame))==bucket,"A valid latest closed row restores readiness");count++;
    ZoneEngine.Zone near=new ZoneEngine.Zone(Market.Frame.H1,4005,4006,3,false,false,false,1,bucket-3600000,bucket);
    ZoneEngine.Zone far=new ZoneEngine.Zone(Market.Frame.H1,4040,4041,3,false,false,false,20,bucket-7200000,bucket);
    ZoneEngine.Zone watch=new ZoneEngine.Zone(Market.Frame.H1,4001,4002,3,false,true,false,0,bucket-3600000,0,true);

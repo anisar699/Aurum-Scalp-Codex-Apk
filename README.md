@@ -1,6 +1,6 @@
 # Aurum Scalp
 
-Aurum Scalp is a native Android app for watching XAU/USD support and resistance with live gold prices. It combines short-term execution context on 5m and 15m with market structure on 1H and 4H. Version **3.1.0** uses Android package `com.aurum.scalp` and runs on Android 8.0 (API 26) and later.
+Aurum Scalp is a native Android app for watching XAU/USD support and resistance with live gold prices. It combines short-term execution context on 5m and 15m with market structure on 1H and 4H. Version **3.1.1** uses Android package `com.aurum.scalp` and runs on Android 8.0 (API 26) and later.
 
 ## Use the app
 
@@ -16,7 +16,7 @@ Aurum Scalp is a native Android app for watching XAU/USD support and resistance 
 
 In **Health**, allow notifications and tap **Start background monitoring**. Expand the notification to see the live price and nearest support (`S`) and resistance (`R`) for **5m, 15m, 1H and 4H**. The collapsed view previews 1H. **Open chart** opens the 1H chart and **Stop monitoring** ends the service. A `?` identifies a retest or range watch, `!` marks a break pending, `*` marks saved candles, and `†` marks stale candles.
 
-Tap a zone and choose **Pin alert** to set an approach, break or retest alert. Each timeframe can have one pin. A pin can follow an overlapping replacement or a confirmed flip. Manage pins from **Health**. Automatic alerts default to 1H and 4H. Breaks and retests use closed candles from their own timeframe. The event window is five minutes for 1H and 4H and 90 seconds for shorter frames. A fresh matching quote is required. Late confirmations show their age and processed closes are saved to prevent repeat alerts. The notification group keeps up to ten recent alerts.
+Tap a zone and choose **Pin alert** to set an approach, break or retest alert. Each timeframe can have one pin. A pin can follow an overlapping replacement or a confirmed flip. Its trigger works alongside automatic alerts when the same timeframe is selected. Manage pins from **Health**. Automatic alerts default to 1H and 4H. Breaks and retests use closed candles from their own timeframe. The event window is five minutes for 1H and 4H and 90 seconds for shorter frames. A fresh matching quote is required. Late confirmations show their age and processed closes are saved to prevent repeat alerts. The notification group keeps up to ten recent alerts.
 
 Android controls notification permissions and foreground service limits. Android 15 applies a background time budget to data-sync services. Start monitoring from Health. The app reports a stopped service when Android delivers the stop callback or permits the periodic health check. The shade refreshes at most every five seconds while the screen is on and every 15 seconds while it is off. [Verification](docs/VERIFICATION.md)
 
@@ -34,7 +34,7 @@ The replay compares bands with random bands of the same width and similar distan
 
 Zone analysis uses valid provider-confirmed closed candles. Swing confirmation waits for right-side closes, zone clustering limits width, and watch areas identify unconfirmed references or zones awaiting a retest. The chart can separately show forming or pending previews from the feed. EMA overlays use confirmed closes and appear only when enough history is available. The renderer uses bundled TradingView Lightweight Charts. [Third-party components](docs/THIRD_PARTY.md)
 
-History fetches follow UTC candle closes for the displayed, alert, pinned and notification-shade timeframes. The app merges a five-bar tail between hourly full corrections. Health shows the requested and returned counts. Support and resistance can load with 40 closed bars, while the trend readout needs 80. The Analysis prior trading day uses the New York 17:00 rollover, including daylight saving time. [Chronological replay](docs/evidence/zone-replay.txt)
+History fetches follow UTC candle closes for the displayed, alert, pinned and notification-shade timeframes. The app merges a five-bar tail between hourly full corrections. Health shows the requested and returned counts. A history response must contain the latest closed candle in the displayed series before that timeframe is verified as current. Support and resistance can load with 40 closed bars, while the trend readout needs 80. The Analysis prior trading day uses the New York 17:00 rollover, including daylight saving time. [Chronological replay](docs/evidence/zone-replay.txt)
 
 ## Build from source
 

@@ -169,6 +169,12 @@ public final class MarketRepository {
 
     private boolean current(Session s){return session==s&&s.active;}
 
+    private boolean claimRequest(Session s,String resource,boolean manual){
+        synchronized(lock){
+            return current(s)&&policy.claim(resource,SystemClock.elapsedRealtime(),manual,s);
+        }
+    }
+
     private void notifyChange(Session s){
         if(!current(s)||!changeQueued.compareAndSet(false,true))return;
         main.postDelayed(()->{
@@ -345,7 +351,7 @@ public final class MarketRepository {
     }
     private void fetchQuote(Session s,boolean manual){
         if(!current(s)||!s.quoteBusy.compareAndSet(false,true))return;
-        if(!policy.claim("quote",SystemClock.elapsedRealtime(),manual,s)){
+        if(!claimRequest(s,"quote",manual)){
             s.quoteBusy.set(false);
             return;
         }
@@ -366,14 +372,17 @@ public final class MarketRepository {
                 if(!current(s))return;
                 Boolean stated=BiquoteCodec.marketState(packet);
                 if(stated!=null&&s.stateRevision==revision)marketState(s,stated);
-                if(quote==null||quote.time>now+MarketClock.FUTURE_TOLERANCE
-                    ||next.time>quote.time||(next.time==quote.time&&!s.subscribed))quote=next;
+                boolean replace=quote==null||quote.time>now+MarketClock.FUTURE_TOLERANCE
+                    ||next.time>quote.time||(next.time==quote.time&&(!s.subscribed||!quoteOnline));
+                if(replace)quote=next;
                 if(s.providerClosed!=null){
                     Market.Quote q=quote;
                     quote=new Market.Quote(q.time,q.bid,q.ask,s.providerClosed,q.providerStale);
                 }
-                quoteOnline=true;
-                forming.tick(quote,true,now);
+                if(replace||next.time==quote.time&&next.bid==quote.bid&&next.ask==quote.ask){
+                    quoteOnline=true;
+                    forming.tick(quote,true,now);
+                }
                 quoteError="";
                 successes.incrementAndGet();
                 delay=quote.marketClosed?60_000:15_000;
@@ -393,7 +402,7 @@ public final class MarketRepository {
 
     private void fetchHistory(Session s,Market.Frame frame,boolean manual){
         if(!current(s)||!s.busy.get(frame).compareAndSet(false,true))return;
-        if(!policy.claim(frame.name(),SystemClock.elapsedRealtime(),manual,s)){
+        if(!claimRequest(s,frame.name(),manual)){
             s.busy.get(frame).set(false);
             return;
         }
@@ -413,34 +422,35 @@ public final class MarketRepository {
             if(now==0)throw new IOException("Server time unavailable; closed candles not recalculated");
             List<Market.Candle> incoming=BiquoteCodec.candles(body,frame,now,0);
             List<Market.Candle> next=BiquoteCodec.merge(previous,incoming,body,frame,fullLimit);
-            if(next.size()<HistorySchedule.MIN_BARS)throw new FeedError("Limited history · "+next.size()+" confirmed "+frame.label+
-                " candles; need "+HistorySchedule.MIN_BARS,180_000);
             boolean changed=existing==null||!HistoryQuality.sameBars(previous,next);
             ZoneEngine.Analysis analysis=changed?ZoneEngine.calculate(next,frame,now):existing;
             Market.Candle preview=BiquoteCodec.forming(body,frame,now);
+            long latest=next.isEmpty()?0:next.get(next.size()-1).time;
+            boolean confirmsLatest=incoming.stream().anyMatch(bar->bar.time==latest);
             synchronized(lock){
                 if(!current(s))return;
                 forming.confirm(frame,next);
                 Long responseDate=responseTime.get();
                 forming.seed(frame,preview,responseDate==null||responseDate<=0?now:responseDate);
-                if(changed){
+                if(changed&&(!next.isEmpty()||existing!=null)){
                     candles=with(candles,frame,next);
                     analyses=with(analyses,frame,analysis);
+                    queueCache(s);
                 }
-                if(!errors.isEmpty()){
-                    Map<Market.Frame,String> clean=new EnumMap<>(Market.Frame.class);
-                    clean.putAll(errors);
-                    clean.remove(frame);
-                    errors=Collections.unmodifiableMap(clean);
+                providerDepth=with(providerDepth,frame,incoming.size());
+                requestedDepth=with(requestedDepth,frame,limit);
+                if(next.size()<HistorySchedule.MIN_BARS||!confirmsLatest){
+                    liveSynced=without(liveSynced,frame);
+                    if(next.size()<HistorySchedule.MIN_BARS)throw new FeedError("Limited history · "+next.size()+" confirmed "+frame.label+
+                        " candles; need "+HistorySchedule.MIN_BARS,180_000);
+                    throw new FeedError(incoming.isEmpty()?"Provider returned no closed candles":"Provider returned history older than the latest saved candle",30_000);
                 }
+                errors=without(errors,frame);
                 long fetched=marketNow();
                 synced=with(synced,frame,fetched);
                 liveSynced=with(liveSynced,frame,fetched);
-                providerDepth=with(providerDepth,frame,incoming.size());
-                requestedDepth=with(requestedDepth,frame,limit);
                 successes.incrementAndGet();
                 delay=cadence.afterResponse(frame,fetched,DataFreshness.lastClose(analysis),quote!=null&&quote.marketClosed,limit==fullLimit);
-                if(changed)queueCache(s);
             }
         }catch(Exception e){
             error=failedRequest(e);
@@ -508,6 +518,11 @@ public final class MarketRepository {
     private static <T> Map<Market.Frame,T> with(Map<Market.Frame,T> source,Market.Frame frame,T next){
         Map<Market.Frame,T> copy=new EnumMap<>(Market.Frame.class);
         copy.putAll(source);copy.put(frame,next);return Collections.unmodifiableMap(copy);
+    }
+    private static <T> Map<Market.Frame,T> without(Map<Market.Frame,T> source,Market.Frame frame){
+        if(!source.containsKey(frame))return source;
+        Map<Market.Frame,T> copy=new EnumMap<>(Market.Frame.class);
+        copy.putAll(source);copy.remove(frame);return Collections.unmodifiableMap(copy);
     }
     private void queueCache(Session s){
         if(s.cacheQueued)return;

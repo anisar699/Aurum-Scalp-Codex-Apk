@@ -19,6 +19,47 @@ public class SmartAlertsTest {
     @Test public void untrustedClockOrSavedQuoteNeverAlerts(){ZoneEngine.Analysis a=snapshot(T,zone(false));at(T+1000,4010,a);assertTrue(alerts.evaluate(new Market.Quote(T+2000,4001,4001.1),false,T+2000,Collections.singletonMap(F,a),Collections.singletonMap(F,T),EnumSet.of(F)).isEmpty());assertTrue(alerts.evaluate(new Market.Quote(T+2000,4001,4001.1),true,0,Collections.singletonMap(F,a),Collections.singletonMap(F,T),EnumSet.of(F)).isEmpty());}
     @Test public void futureQuoteIsRejected(){ZoneEngine.Analysis a=snapshot(T,zone(false));at(T+1000,4010,a);assertTrue(alerts.evaluate(new Market.Quote(T+60000,4001,4001.1),true,T+2000,Collections.singletonMap(F,a),Collections.singletonMap(F,T),EnumSet.of(F)).isEmpty());}
     @Test public void disconnectedGapPrimesSilently(){ZoneEngine.Analysis a=snapshot(T,zone(false));at(T+1000,4010,a);assertTrue(at(T+100000,4001,a).isEmpty());}
+    @Test public void reconnectPreservesTenMinuteZoneCooldown(){
+        ZoneEngine.Zone z=zone(false);
+        ZoneEngine.Analysis a=snapshot(T,z);
+        at(T+1_000,4010,a);
+        assertEquals(1,at(T+6_000,4001,a).size());
+        alerts.pause();
+        assertFalse(alerts.armed(F));
+        assertTrue(at(T+140_000,4001,a).isEmpty());
+        assertTrue(at(T+145_000,4010,a).isEmpty());
+        assertTrue(at(T+150_000,4001,a).isEmpty());
+        assertTrue(at(T+300_000,4010,snapshot(T+300_000,z)).isEmpty());
+        assertTrue(at(T+305_000,4001,snapshot(T+300_000,z)).isEmpty());
+        assertTrue(at(T+605_000,4010,snapshot(T+600_000,z)).isEmpty());
+        assertEquals(1,at(T+610_000,4001,snapshot(T+600_000,z)).size());
+    }
+    @Test public void temporarilyMissingZoneDoesNotLoseItsCooldown(){
+        ZoneEngine.Zone z=zone(false);
+        ZoneEngine.Analysis original=snapshot(T,z);
+        ZoneEngine.Analysis missing=new ZoneEngine.Analysis(F,original.candles,List.of(),List.of(),10,0,"Mixed");
+        at(T+1_000,4010,original);
+        assertEquals(1,at(T+6_000,4001,original).size());
+        assertTrue(at(T+130_000,4010,missing).isEmpty());
+        assertTrue(at(T+135_000,4010,original).isEmpty());
+        assertTrue(at(T+140_000,4001,original).isEmpty());
+    }
+    @Test public void pinDoesNotReplaceAutomaticAlertsForTheSameZone(){
+        ZoneEngine.Zone z=zone(false);
+        ZoneSelection.Pin pin=new ZoneSelection.Pin(F,z.id,z.low,z.high,z.support,ZoneSelection.Trigger.RETEST);
+        long next=T+F.duration();
+        var initial=snapshot(T,z);
+        var after=snapshot(next,z,new ZoneEngine.Event(ZoneEngine.EventKind.BREAK,z,next),
+            new ZoneEngine.Event(ZoneEngine.EventKind.RETEST_HELD,z,next));
+        alerts.evaluate(new Market.Quote(next-15_000,4010,4010.1),true,next-15_000,
+            Map.of(F,initial),Map.of(F,next-15_000),Set.of(F),Map.of(F,pin));
+        var approach=alerts.evaluate(new Market.Quote(next-10_000,4001,4001.1),true,next-10_000,
+            Map.of(F,initial),Map.of(F,next-10_000),Set.of(F),Map.of(F,pin));
+        assertEquals(List.of("5m · Zone approach"),approach.stream().map(a->a.title).toList());
+        var events=alerts.evaluate(new Market.Quote(next+1_000,4001,4001.1),true,next+1_000,
+            Map.of(F,after),Map.of(F,next+1_000),Set.of(F),Map.of(F,pin));
+        assertEquals(List.of("5m · Break confirmed","5m · Pinned · Retest held"),events.stream().map(a->a.title).toList());
+    }
     @Test public void httpDatePrecisionCorrectionDoesNotEraseArmedApproach(){ZoneEngine.Analysis a=snapshot(T,zone(false));at(T+1000,4010,a);assertEquals(1,alerts.evaluate(new Market.Quote(T+1500,4001,4001.1),true,T+900,Collections.singletonMap(F,a),Collections.singletonMap(F,T+900),EnumSet.of(F)).size());}
     @Test public void newlyClosedEventsAreDeduplicated(){ZoneEngine.Zone z=zone(false);ZoneEngine.Analysis before=snapshot(T,z);at(T+1000,4010,before);for(long t=T+21000;t<T+300000;t+=20000)at(t,4010,before);ZoneEngine.Event event=new ZoneEngine.Event(ZoneEngine.EventKind.BREAK,z,T+300000);ZoneEngine.Analysis after=snapshot(T+300000,z,event);assertEquals(1,at(T+301000,4010,after).size());assertTrue(at(T+306000,4010,after).isEmpty());}
     @Test public void initialHistoryEventsAreNeverReplayed(){ZoneEngine.Zone z=zone(false);ZoneEngine.Analysis a=snapshot(T,z,new ZoneEngine.Event(ZoneEngine.EventKind.BREAK,z,T));assertTrue(at(T+1000,4010,a).isEmpty());assertTrue(at(T+6000,4010,a).isEmpty());}

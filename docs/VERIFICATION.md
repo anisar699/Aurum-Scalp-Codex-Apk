@@ -1,4 +1,18 @@
-# Aurum Scalp 3.1.0 verification
+# Aurum Scalp verification
+
+## 3.1.1 reliability fixes
+
+- A delayed REST response cannot mark an unrelated newer saved quote as live. A valid same-timestamp snapshot can establish the on-device quote before the first stream tick.
+- History responses must include the latest retained closed candle to verify that timeframe. Older or empty responses preserve saved history without renewing its verified status. Provider withdrawals remove the affected candle even when history falls below the 40-bar analysis threshold.
+- A repository session must still be active when it reserves a provider request. Stopping the repository releases its reservations before a new session can claim them.
+- The ten-minute approach cooldown survives pauses and temporary zone removal. Fresh quotes prime the approach state again. Automatic alerts still run on a pinned zone when the timeframe is selected, with a single notification for matching automatic and pinned events.
+- The first confirmed chart history opens at the recent-candle range, including when a live preview arrived before the history.
+
+The new regression cases cover old quotes, older history, a withdrawn candle, reconnecting during cooldown, temporary zone removal, pinned alerts, and late chart history. The fixture replay output matches 3.1.0.
+
+Gradle unit tests, debug and release lint and the release build passed. The test totals include 147 JVM checks, 11 JavaScript chart-model checks and 30 Chromium chart checks.
+
+The signed release is package `com.aurum.scalp`, version code 32. It installed over 3.1.0 on the Android 11 emulator, and the installed file matched the signed APK. APK SHA-256 `d00483fe0089af3bdcdcd6d9212e7e42248b9ef928ac5a88fab838a5c632638c`.
 
 ## Support and resistance research
 
@@ -47,14 +61,14 @@ python3 tests/replay/compare_strength.py XAUUSD-archive.zip --split holdout
 python3 tests/replay/compare_strength.py XAUUSD-archive.zip --split holdout --first-sync
 ```
 
-## Build and signing
+## 3.1.0 build and signing
 
 - Gradle release build, debug and release lint, and 144 JVM unit tests passed.
 - 11 JavaScript chart model tests, 28 browser integration checks, and the fixture replay passed.
 - The signed release is package `com.aurum.scalp`, version code 31. The signing certificate matches v3.0.0.
 - Signed APK SHA-256 `ec1fc8ae54e220ba05bbd4f2468e66b359894d2b548547ac2243bbac47d79dce`.
 
-## Android 11 emulator
+## 3.1.0 Android 11 emulator
 
 The signed APK updated the installed 3.0.0 package in place. The installed package SHA-256 matched the delivered APK. After an initial chart timeout on the emulator, the final run passed all 76 deterministic Android checks, including the new Scalp View watch regression, and all nine live Biquote checks.
 
