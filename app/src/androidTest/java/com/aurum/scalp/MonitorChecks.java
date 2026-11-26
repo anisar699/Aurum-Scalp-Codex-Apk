@@ -116,6 +116,7 @@ final class MonitorChecks {
                 java.lang.reflect.Field frame=MainActivity.class.getDeclaredField("frame");frame.setAccessible(true);check(frame.get(activity)==Market.Frame.H4,"Alert opens its own timeframe");
                 android.view.View root=activity.getWindow().getDecorView();
                 android.widget.TextView scalp=text(root,"Scalp View");check(scalp!=null&&scalp.performClick(),"Scalp View opens from Market");
+                check(text(root,"SCALP SETUP")!=null&&text(root,"View setup on 5m chart")!=null,"Scalp View exposes Setup Card and 5m shortcut");
                 for(String tf:new String[]{"5m","15m","1H","4H"})check(text(root,"Open "+tf+" chart")!=null,"Scalp View exposes "+tf);
                 check(text(root,"Open 1m chart")==null&&text(root,"Distance filter · All distances")!=null,"Four scalp rows and distance filter");
                 android.widget.TextView watch=text(root,"Retest watch · potential resistance 4005.00–4006.00 · $4.75 from edge");
@@ -132,7 +133,7 @@ final class MonitorChecks {
                 java.lang.reflect.Field scroll=MainActivity.class.getDeclaredField("scroll");scroll.setAccessible(true);android.widget.ScrollView view=(android.widget.ScrollView)scroll.get(activity);android.view.View child=view.getChildAt(0);view.scrollTo(0,400);Object first=((android.view.ViewGroup)child).getChildAt(0);ref.get().refreshState();check(first==((android.view.ViewGroup)child).getChildAt(0),"Health update preserves existing views and accessibility focus targets");
                 activity.finish();
             }catch(Throwable e){failure.set(e);}});
-            if(failure.get()!=null)throw new AssertionError(failure.get());checks+=5;
+            if(failure.get()!=null)throw new AssertionError(failure.get());checks+=6;
         }finally{
             i.runOnMainSync(()->{c.stopService(new Intent(c,MonitoringService.class));MonitorRuntime r=ref.get();if(r!=null){r.detach(viewer);r.background(false);injected.stop();r.repository=original.get();r.refreshState();}});
             cancelAlerts(c);

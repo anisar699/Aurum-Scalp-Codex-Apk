@@ -1,16 +1,24 @@
 # Aurum Scalp
 
-Aurum Scalp is a native Android app for watching XAU/USD support and resistance with live gold prices. It combines short-term execution context on 5m and 15m with market structure on 1H and 4H. Version **3.1.1** uses Android package `com.aurum.scalp` and runs on Android 8.0 (API 26) and later.
+Aurum Scalp is a native Android app for watching XAU/USD support and resistance with live gold prices. It combines short-term execution context on 5m and 15m with market structure on 1H and 4H. Version **3.2.0** uses Android package `com.aurum.scalp` and runs on Android 8.0 (API 26) and later.
 
 ## Use the app
 
 | Where | What you can do |
 | --- | --- |
-| **Market → Scalp View** | See the nearest break or retest watch and the confirmed bands on 5m, 15m, 1H and 4H alongside the spread and 5m volatility. Tap **Structure** for the higher-timeframe view. |
+| **Market → Scalp View** | The **Scalp Setup** card shows the nearby 1H/4H zone, 15m overlap, 5m reclaim stage and invalidation. Live spread, volatility and the timeframe cards sit below the quote. |
 | **All zones → Distance filter** | Limit zones by USD from the nearest edge or by a multiple of the timeframe's ATR. Break and retest watches appear first, followed by confirmed zones, range references and wider structure. Tap a band for its width, independent swing reactions, defended and failed visits, last reaction, and distance. |
-| **Chart** | Follow the selected timeframe. Use **Focus price** to fit the latest 45 candles and **Latest** to restore the default 100-candle view. **Layers** controls 1H/4H context, EMA50/200, forming candles and nearby zones. Tap a band or its label for details. |
+| **Chart** | Follow the selected timeframe. Use **Focus price** to fit the latest 45 candles and **Latest** to restore the default 100-candle view. **Layers** controls 1H/4H context, EMA50/200, forming candles and nearby zones. Enable **Session levels** in **Layers**. The **5m sweep & reclaim** layer marks closed 5m candles. Tap a zone or its label for details. |
 | **Analysis** | Read the selected timeframe first. Swing structure, EMA/ADX trend, range and volatility have independent labels. |
 | **Health** | Check quote age, last closed candle, last successful history fetch, provider backoff, available history and per-timeframe alert readiness. |
+
+### Scalp setup and session levels
+
+The setup card uses the latest six closed 5m candles, verified 5m/15m/1H/4H history and a fresh MID quote. Watching covers zones up to one 5m ATR from the live price. A recent reclaim or invalidation appears up to two ATR away. The card looks for a touch from the valid side and a close at least $0.05 beyond the near edge of a confirmed 1H/4H zone. A subsequent close $0.05 beyond the far edge invalidates the setup. A live quote past that level is shown as awaiting a 5m close. Trend and overlapping 15m zones are displayed as context.
+
+**Chart → Layers → Session levels** draws previous day and week high/low, Asia (00:00–06:00 UTC), London opening range (08:00–09:00 London time) and New York opening range (08:00–09:00 New York time). Day and week ranges follow XAU/USD trading hours, from 18:00 New York to 17:00 on the trading day. Every required candle must be present. A short holiday session or limited history can leave a range unavailable. Each line begins at the first chart candle at or after the range completion.
+
+On the 5m chart, **5m sweep & reclaim** marks a closed candle with a wick at least $0.05 outside an already available session level and a close back inside it. The prior close and sweep opening price must be on the inside side. Selecting the sweep candle names the reference in the legend. [Verification](docs/VERIFICATION.md)
 
 ### Background monitoring and alerts
 

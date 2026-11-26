@@ -285,6 +285,12 @@ public final class MainActivity extends Activity {
             return (q==null?"Spread unavailable":"Spread $"+money(q.spread())+(SmartAlerts.usableQuote(q,repo.quoteOnline,repo.marketNow())?"":" · saved quote"))
                 +(r.available?" · 5m volatility "+r.volatility+" · ATR $"+money(r.atr):" · waiting for volatility data");
         },12,GOLD));space(9);
+        LinearLayout setup=card(14);
+        setup.addView(label("SCALP SETUP",11,GOLD,true));gap(setup,7);
+        setup.addView(bound(this::setupText,13,TEXT));gap(setup,8);
+        Button setupChart=button("View setup on 5m chart",false);
+        setupChart.setOnClickListener(v->startActivity(new Intent(this,ChartActivity.class).putExtra("default-frame","M5")));
+        setup.addView(setupChart);body.addView(setup);space(9);
         Button filter=button("Distance filter · "+zoneFilter.label(),false);filter.setOnClickListener(v->chooseFilter());body.addView(filter);space(9);
         for(Market.Frame f:new Market.Frame[]{Market.Frame.M5,Market.Frame.M15,Market.Frame.H1,Market.Frame.H4}){
             LinearLayout panel=card(12);
@@ -309,6 +315,21 @@ public final class MainActivity extends Activity {
             body.addView(panel);space(8);
         }
         Button pins=button("Manage pinned alerts",false);pins.setOnClickListener(v->managePins());body.addView(pins);
+    }
+    private String setupText(){
+        ScalpSetup.Readout readout=ScalpSetup.evaluate(repo.analyses,repo.liveSynced,repo.quote,repo.quoteOnline,repo.marketNow());
+        String status=readout.stage().label;
+        if(readout.stage()==ScalpSetup.Stage.WAITING)return status+"\nNeeds a fresh MID quote and current 5m, 15m, 1H and 4H candles.";
+        String trend="1H "+regime(Market.Frame.H1).trend+" · 4H "+regime(Market.Frame.H4).trend;
+        ZoneEngine.Zone anchor=readout.anchor();
+        if(anchor==null)return status+"\n"+trend;
+        String side=anchor.support?"support":"resistance";
+        String context=readout.context()==null?"No overlapping 15m "+side:"15m "+side+" "+ZoneSelection.band(readout.context());
+        double edge=ScalpSetup.invalidation(anchor);
+        String invalidation=anchor.support?"at or below "+PriceFormat.low(edge):"at or above "+PriceFormat.high(edge);
+        String observed=readout.eventTime()>0?"\n5m close "+DataFreshness.date(readout.eventTime())+" UTC":"";
+        return status+"\n"+trend+"\n"+anchor.frame.label+" "+side+" "+ZoneSelection.band(anchor)+"\n"+context
+            +"\nInvalidation · 5m close "+invalidation+observed;
     }
     private ZoneEngine.Zone scalpBand(Market.Frame frame,boolean support){
         ZoneEngine.Analysis analysis=repo.analyses.get(frame);

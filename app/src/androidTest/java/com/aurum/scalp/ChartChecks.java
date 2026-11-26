@@ -40,6 +40,7 @@ final class ChartChecks {
    layer(i,a,2);await(()->{try{return state(i,web).optInt("ema200")==61;}catch(Exception e){return false;}},"Native EMA toggle reaches renderer");checks++;
    layer(i,a,0);layer(i,a,1);await(()->{try{return state(i,web).getJSONArray("bands").length()==0;}catch(Exception e){return false;}},"Native zone/context toggles remove overlays");checks++;
    layer(i,a,3);await(()->{try{return state(i,web).getJSONArray("bars").length()==260;}catch(Exception e){return false;}},"Live toggle hides previews but retains closed history");checks++;
+   layer(i,a,5);await(()->{try{return js(i,web,"document.getElementById('status').textContent").contains("Sessions ·");}catch(Exception e){return false;}},"Native Session levels toggle reaches renderer");checks++;
    click(i,a,"Focus price on recent candles");await(()->{try{JSONObject x=state(i,web);JSONObject r=x.getJSONObject("range");return x.optBoolean("focusMode")&&r.getDouble("to")-r.getDouble("from")<60;}catch(Exception e){return false;}},"Focus zooms to recent candles");checks++;
    click(i,a,"Return chart to latest and reset scale");await(()->{try{return !state(i,web).optBoolean("focusMode");}catch(Exception e){return false;}},"Latest clears focus mode");checks++;
    click(i,a,"Chart timeframe 4H");await(()->ready(i,web,"H4",260),"Timeframe switch loads H4 independently");check(c.getSharedPreferences("advanced-chart",0).getString("frame","").equals("H4"),"Selected frame saved");checks++;

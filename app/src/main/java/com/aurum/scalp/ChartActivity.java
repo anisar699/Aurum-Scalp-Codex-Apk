@@ -34,17 +34,22 @@ public final class ChartActivity extends Activity {
         if(Build.VERSION.SDK_INT>=33){back=()->{if(full)fullscreen(false);else finish();};getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,back);}
         fullscreen(saved!=null&&saved.getBoolean("full",false));update();
     }
-    private static final String[] LAYER_KEYS={"zones","context","ema","live","near"};
-    private static final String[] LAYER_NAMES={"Zones","1H / 4H context","EMA 50/200","Live candle","Near zones"};
+    private static final String[] LAYER_KEYS={"zones","context","ema","live","near","sessions","sweeps"};
+    private static final String[] LAYER_NAMES={"Zones","1H / 4H context","EMA 50/200","Live candle","Near zones","Session levels","5m sweep & reclaim"};
+    private static final boolean[] LAYER_DEFAULTS={true,true,false,true,true,false,true};
     private void showLayers(){
         boolean[] selected=new boolean[LAYER_KEYS.length];
-        for(int i=0;i<selected.length;i++)selected[i]=prefs().getBoolean(LAYER_KEYS[i],i!=2);
+        for(int i=0;i<selected.length;i++)selected[i]=prefs().getBoolean(LAYER_KEYS[i],LAYER_DEFAULTS[i]);
         layerMenu=new AlertDialog.Builder(this).setTitle("Chart layers")
-            .setMultiChoiceItems(LAYER_NAMES,selected,(dialog,which,on)->{prefs().edit().putBoolean(LAYER_KEYS[which],on).apply();update();})
+            .setMultiChoiceItems(LAYER_NAMES,selected,(dialog,which,on)->{
+                prefs().edit().putBoolean(LAYER_KEYS[which],on).apply();
+                runtime.viewFrames(listener,chartFrames());
+                update();
+            })
             .setPositiveButton("Done",null).setNeutralButton("Refresh data",(dialog,which)->runtime.repository.refresh(frame)).show();
     }
     private SharedPreferences prefs(){return getSharedPreferences("advanced-chart",MODE_PRIVATE);}
-    private void update(){if(chart==null)return;MarketRepository r=runtime.repository;fullLabel.setText(getString(R.string.chart_heading,frame.label));state.setText(getString(R.string.chart_state,frame.label,Market.priceState(r.quote,r.quoteOnline,r.marketNow(),r.analyses.values()).replace("● ","")));chart.data(r,frame,prefs().getBoolean("zones",true),prefs().getBoolean("context",true),prefs().getBoolean("ema",false),prefs().getBoolean("live",true),prefs().getBoolean("near",true));}
+    private void update(){if(chart==null)return;MarketRepository r=runtime.repository;fullLabel.setText(getString(R.string.chart_heading,frame.label));state.setText(getString(R.string.chart_state,frame.label,Market.priceState(r.quote,r.quoteOnline,r.marketNow(),r.analyses.values()).replace("● ","")));chart.data(r,frame,prefs().getBoolean("zones",true),prefs().getBoolean("context",true),prefs().getBoolean("ema",false),prefs().getBoolean("live",true),prefs().getBoolean("near",true),prefs().getBoolean("sessions",false),prefs().getBoolean("sweeps",true));}
     @SuppressWarnings("deprecation")
     private void fullscreen(boolean value){full=value;chrome.setVisibility(value?View.GONE:View.VISIBLE);exit.setVisibility(value?View.VISIBLE:View.GONE);fullLabel.setVisibility(value?View.VISIBLE:View.GONE);FrameLayout.LayoutParams clp=(FrameLayout.LayoutParams)chart.getLayoutParams();clp.topMargin=value?dp(48*Math.max(1,getResources().getConfiguration().fontScale)):0;chart.setLayoutParams(clp);
         if(Build.VERSION.SDK_INT>=30){WindowInsetsController controller=getWindow().getInsetsController();if(controller!=null){controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);if(value)controller.hide(WindowInsets.Type.systemBars());else controller.show(WindowInsets.Type.systemBars());}}
@@ -54,7 +59,9 @@ public final class ChartActivity extends Activity {
     @Override protected void onStart(){super.onStart();visible=true;runtime.attach(listener,chartFrames());chart.active(true);update();handler.post(clock);}
     @Override protected void onStop(){visible=false;handler.removeCallbacks(clock);chart.active(false);runtime.detach(listener);super.onStop();}
     private java.util.Set<Market.Frame> chartFrames(){
-        return java.util.EnumSet.of(frame,Market.Frame.H1,Market.Frame.H4);
+        java.util.Set<Market.Frame> frames=java.util.EnumSet.of(frame,Market.Frame.H1,Market.Frame.H4);
+        if(prefs().getBoolean("sessions",false))frames.add(Market.Frame.M5);
+        return frames;
     }
     @Override protected void onResume(){super.onResume();runtime.refreshPermissions();}
     @Override protected void onDestroy(){

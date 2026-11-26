@@ -16,6 +16,28 @@ final class ChartPayload {
         for(Market.Frame macro:new Market.Frame[]{Market.Frame.H1,Market.Frame.H4})if(macro!=f){ZoneEngine.Analysis other=repo.analyses.get(macro);if(other!=null)append(bands,other,price,true,now,repo.liveSynced,q);}
         return out.put("bands",bands);
     }
+    static void addSessions(JSONObject out,MarketRepository repo,SessionLevels.Cache cache,boolean sessions,boolean sweeps)throws JSONException{
+        long now=repo.marketNow();
+        Map<Market.Frame,ZoneEngine.Analysis> analyses=repo.analyses;
+        SessionLevels.Snapshot snapshot=cache.get(analyses,now);
+        if(sessions){
+            JSONArray rows=new JSONArray();
+            for(SessionLevels.Level level:snapshot.levels())
+                rows.put(new JSONObject().put("label",level.label()).put("price",level.price()).put("from",level.availableAt()/1000));
+            out.put("sessionLevels",rows);
+            String status="Sessions · "+rows.length()/2+"/5 ranges ready";
+            if(now<=0)status+=" · time unverified";
+            else if(repo.quote!=null&&repo.quote.marketClosed)status+=" · last session";
+            out.put("sessionStatus",status);
+        }
+        if(sweeps){
+            JSONArray rows=new JSONArray();
+            for(SessionLevels.Sweep sweep:snapshot.sweeps())
+                rows.put(new JSONObject().put("time",sweep.barTime()/1000)
+                    .put("level",sweep.level().label()).put("high",sweep.level().high()));
+            out.put("sweeps",rows);
+        }
+    }
     private static JSONArray row(Market.Candle c,String kind)throws JSONException{return new JSONArray().put(c.time/1000).put(c.open).put(c.high).put(c.low).put(c.close).put(kind);}
     private static void append(JSONArray out,ZoneEngine.Analysis a,double price,boolean macro,long now,Map<Market.Frame,Long> synced,Market.Quote quote)throws JSONException{
         for(boolean side:new boolean[]{true,false}){

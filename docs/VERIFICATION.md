@@ -1,5 +1,16 @@
 # Aurum Scalp verification
 
+## 3.2.0 setup and chart studies
+
+- The setup card distinguishes watching, a confirmed 5m reclaim, live pressure beyond invalidation and a closed invalidation. A reclaim cannot precede confirmation of the anchor zone. Fixtures cover both sides, incomplete history, a missing candle and quotes that outrun the latest closed 5m bar.
+- Session ranges are built from complete, aligned candle windows. Fixtures cover DST, weekends, missing history, a range still forming and weekly completeness.
+- Sweep fixtures cover a wick through either side followed by a close back inside, a close outside, a gap, and a candle that is still forming. Browser checks verify that session lines begin after availability and that markers apply only to confirmed candles.
+- The zone replay fixture output matches 3.1.1.
+
+The release build and debug/release lint passed. Local checks include 156 JVM tests, 11 chart-model tests and 33 browser assertions. The signed APK installed over 3.1.1 on Android 11. The installed SHA-256 matched the delivered APK.
+
+Signed package `com.aurum.scalp`, version code 33. APK SHA-256 `2b8311bef66893d7aa508a87716c29c8e29fc38417460fb2139fcbf47440d62b`.
+
 ## 3.1.1 reliability fixes
 
 - A delayed REST response cannot mark an unrelated newer saved quote as live. A valid same-timestamp snapshot can establish the on-device quote before the first stream tick.

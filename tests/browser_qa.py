@@ -82,6 +82,16 @@ with sync_playwright() as p:
  render(dict(data,frame='4H',frameKey='H4'))
  late=inspect()
  check(late['range'] is not None and abs(late['range']['to']-late['range']['from']-106)<1,'First closed history restores the recent view after a forming preview')
+ render(dict(data,forming=[],sessionLevels=[dict(label='PDH',price=4004,**{'from':t-6*dur+1}),
+    dict(label='Future range',price=4001,**{'from':t+dur})],sessionStatus='Sessions · 1/5 ranges ready',
+    sweeps=[dict(time=t-dur,level='Asia L',high=False),dict(time=t,level='Asia H',high=True)]))
+ layers=inspect()
+ check(layers['sessionStarts']==[t-5*dur,None] and 'Sessions · 1/5' in page.locator('#status').inner_text(),
+       'Session levels anchor at the first bar after availability and omit future drawing')
+ check(layers['sweeps']==1 and 'Sweep & reclaim · Asia L' in page.locator('#legend').inner_text(),
+       'Only closed candle sweeps become markers and the candle legend names the reference')
+ render(dict(data,forming=[]))
+ check(inspect()['sessionStarts']==[] and inspect()['sweeps']==0,'Toggling session and sweep layers off clears their overlays')
  check(not errors,'No JavaScript or renderer errors')
  check(all(u.startswith('https://appassets.androidplatform.net/') for u in requests),'Renderer makes no external feed/network requests')
  browser.close()

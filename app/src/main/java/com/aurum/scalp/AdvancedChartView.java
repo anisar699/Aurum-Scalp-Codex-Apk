@@ -5,7 +5,8 @@ import java.io.*;import java.util.*;
 /** Local renderer only. The page has no feed, proxy route or JavaScript interface. */
 final class AdvancedChartView extends WebView {
     private static final String HOST="appassets.androidplatform.net";
-    private boolean ready,active;private MarketRepository repo;private Market.Frame frame;private boolean zones,context,ema,live,near;private Object sent;private Market.Frame sentFrame;private boolean queued;
+    private boolean ready,active;private MarketRepository repo;private Market.Frame frame;private boolean zones,context,ema,live,near,sessions,sweeps;private Object sent;private Market.Frame sentFrame;private boolean queued;
+    private final SessionLevels.Cache sessionCache=new SessionLevels.Cache();
     private final Handler main=new Handler(Looper.getMainLooper());private final Runnable push=()->{queued=false;send();};
     @SuppressLint("SetJavaScriptEnabled")
     AdvancedChartView(Context c){
@@ -34,11 +35,13 @@ final class AdvancedChartView extends WebView {
     });}
     private static WebResourceResponse response(int code,String mime,byte[] data){return new WebResourceResponse(mime,"utf-8",code,code==200?"OK":"Blocked",Collections.singletonMap("Cache-Control","no-store"),new ByteArrayInputStream(data));}
     void active(boolean value){active=value;if(value){onResume();update();}else{main.removeCallbacks(push);queued=false;onPause();}}
-    void data(MarketRepository r,Market.Frame f,boolean zones,boolean context,boolean ema,boolean live,boolean near){repo=r;frame=f;this.zones=zones;this.context=context;this.ema=ema;this.live=live;this.near=near;update();}
+    void data(MarketRepository r,Market.Frame f,boolean zones,boolean context,boolean ema,boolean live,boolean near,boolean sessions,boolean sweeps){repo=r;frame=f;this.zones=zones;this.context=context;this.ema=ema;this.live=live;this.near=near;this.sessions=sessions;this.sweeps=sweeps;update();}
     private void update(){if(active&&!queued){queued=true;main.postDelayed(push,150);}}
     private void send(){if(!active||!ready||repo==null||frame==null)return;try{
         Object identity=repo.analyses.get(frame);boolean history=sentFrame!=frame||sent!=identity;
-        String json=ChartPayload.make(repo,frame,history,zones,context,ema,live,near,getResources().getConfiguration().fontScale).toString();evaluateJavascript("window.AurumChart&&window.AurumChart.render("+json+")",null);sent=identity;sentFrame=frame;
+        org.json.JSONObject data=ChartPayload.make(repo,frame,history,zones,context,ema,live,near,getResources().getConfiguration().fontScale);
+        if(sessions||sweeps&&frame==Market.Frame.M5)ChartPayload.addSessions(data,repo,sessionCache,sessions,sweeps&&frame==Market.Frame.M5);
+        evaluateJavascript("window.AurumChart&&window.AurumChart.render("+data+")",null);sent=identity;sentFrame=frame;
     }catch(org.json.JSONException ignored){}}
     void focusPrice(){if(ready)evaluateJavascript("window.AurumChart.focusPrice()",null);}
     void latest(){if(ready)evaluateJavascript("window.AurumChart.latest()",null);}
